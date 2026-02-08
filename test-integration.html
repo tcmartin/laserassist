@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>TranscriptBuffer Integration Test</title>
+  <style>
+    body { font-family: sans-serif; margin: 20px; }
+    .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; }
+    .success { color: green; }
+    .error { color: red; }
+    #transcript { 
+      background: #f5f5f5; 
+      padding: 10px; 
+      border: 1px solid #ddd; 
+      height: 100px; 
+      overflow-y: auto; 
+      white-space: pre-wrap; 
+    }
+    button { margin: 5px; padding: 8px 16px; }
+  </style>
+</head>
+<body>
+  <h1>TranscriptBuffer Integration Test</h1>
+  
+  <div class="test-section">
+    <h2>Transcript Display</h2>
+    <pre id="transcript"></pre>
+    <button onclick="addTestSegment()">Add Test Segment</button>
+    <button onclick="clearTranscript()">Clear Transcript</button>
+  </div>
+  
+  <div class="test-section">
+    <h2>Buffer Statistics</h2>
+    <div id="stats"></div>
+    <button onclick="updateStats()">Update Stats</button>
+  </div>
+  
+  <div class="test-section">
+    <h2>Analysis Functions</h2>
+    <div id="analysis-results"></div>
+    <button onclick="testAnalysisFunctions()">Test Analysis Functions</button>
+  </div>
+  
+  <div class="test-section">
+    <h2>Test Results</h2>
+    <div id="test-results"></div>
+  </div>
+
+  <script src="transcript-buffer.js"></script>
+  <script>
+    // Initialize elements
+    const transcriptEl = document.getElementById('transcript');
+    const statsEl = document.getElementById('stats');
+    const analysisEl = document.getElementById('analysis-results');
+    const resultsEl = document.getElementById('test-results');
+    
+    // Initialize TranscriptBuffer
+    const transcriptBuffer = new TranscriptBuffer();
+    
+    // Expose globally (simulating the main app)
+    window.transcriptBuffer = transcriptBuffer;
+    
+    // Utility functions (simulating the main app)
+    window.getTranscriptForAnalysis = function(minLength = 100) {
+      return transcriptBuffer.getUnanalyzedSegments(minLength);
+    };
+    
+    window.markTranscriptAnalyzed = function(segmentIds) {
+      transcriptBuffer.markSegmentsAnalyzed(segmentIds);
+    };
+    
+    window.getFullTranscriptContext = function(fromTime = null, toTime = null) {
+      return transcriptBuffer.getFullContext(fromTime, toTime);
+    };
+    
+    // Function to update transcript display (simulating main app)
+    function updateTranscriptDisplay() {
+      const fullTranscript = transcriptBuffer.getFullContext();
+      transcriptEl.textContent = fullTranscript;
+      transcriptEl.scrollTop = transcriptEl.scrollHeight;
+    }
+    
+    // Function to clear transcript (simulating main app)
+    function clearTranscriptSession() {
+      transcriptBuffer.clearBuffer();
+      transcriptEl.textContent = '';
+    }
+    
+    // Test functions
+    let segmentCounter = 1;
+    
+    function addTestSegment() {
+      const testTexts = [
+        "Hello, this is a test segment.",
+        "We are testing the transcript buffer system.",
+        "This segment should appear in the transcript display.",
+        "The buffer should track all segments with timestamps.",
+        "Analysis functions should work with these segments."
+      ];
+      
+      const text = testTexts[(segmentCounter - 1) % testTexts.length];
+      const segmentId = transcriptBuffer.addTranscriptSegment(
+        `${segmentCounter}: ${text}`, 
+        new Date()
+      );
+      
+      updateTranscriptDisplay();
+      updateStats();
+      
+      log(`Added segment ${segmentCounter}: ${segmentId}`, 'success');
+      segmentCounter++;
+    }
+    
+    function clearTranscript() {
+      clearTranscriptSession();
+      updateStats();
+      log('Transcript cleared', 'success');
+      segmentCounter = 1;
+    }
+    
+    function updateStats() {
+      const stats = transcriptBuffer.getStats();
+      statsEl.innerHTML = `
+        <strong>Buffer Statistics:</strong><br>
+        Total Segments: ${stats.totalSegments}<br>
+        Analyzed Segments: ${stats.analyzedSegments}<br>
+        Unanalyzed Segments: ${stats.unanalyzedSegments}<br>
+        Total Characters: ${stats.totalCharacters}<br>
+        Average Confidence: ${stats.averageConfidence.toFixed(2)}<br>
+        Session Duration: ${stats.sessionDuration}ms<br>
+        Last Analysis: ${stats.lastAnalysisTime || 'Never'}
+      `;
+    }
+    
+    function testAnalysisFunctions() {
+      try {
+        // Test getting unanalyzed segments
+        const unanalyzed = window.getTranscriptForAnalysis(10);
+        
+        // Test getting full context
+        const fullContext = window.getFullTranscriptContext();
+        
+        // Test marking segments as analyzed (mark first half)
+        if (unanalyzed.length > 0) {
+          const toAnalyze = unanalyzed.slice(0, Math.ceil(unanalyzed.length / 2));
+          const ids = toAnalyze.map(segment => segment.id);
+          window.markTranscriptAnalyzed(ids);
+        }
+        
+        // Get updated stats
+        const stats = transcriptBuffer.getStats();
+        
+        analysisEl.innerHTML = `
+          <strong>Analysis Results:</strong><br>
+          Unanalyzed segments found: ${unanalyzed.length}<br>
+          Full context length: ${fullContext.length} characters<br>
+          Segments marked as analyzed: ${Math.ceil(unanalyzed.length / 2)}<br>
+          Current analyzed count: ${stats.analyzedSegments}<br>
+          Current unanalyzed count: ${stats.unanalyzedSegments}
+        `;
+        
+        updateStats();
+        log('Analysis functions test completed successfully', 'success');
+        
+      } catch (error) {
+        log(`Analysis functions test failed: ${error.message}`, 'error');
+      }
+    }
+    
+    function log(message, type = 'info') {
+      const timestamp = new Date().toLocaleTimeString();
+      const className = type === 'success' ? 'success' : type === 'error' ? 'error' : '';
+      resultsEl.innerHTML += `<div class="${className}">[${timestamp}] ${message}</div>`;
+    }
+    
+    // Run initial tests
+    function runInitialTests() {
+      log('Starting TranscriptBuffer integration tests...', 'success');
+      
+      // Test 1: Basic functionality
+      try {
+        const buffer = new TranscriptBuffer();
+        log('✓ TranscriptBuffer instantiation successful', 'success');
+      } catch (error) {
+        log(`✗ TranscriptBuffer instantiation failed: ${error.message}`, 'error');
+      }
+      
+      // Test 2: Global exposure
+      if (window.transcriptBuffer) {
+        log('✓ TranscriptBuffer exposed globally', 'success');
+      } else {
+        log('✗ TranscriptBuffer not exposed globally', 'error');
+      }
+      
+      // Test 3: Utility functions
+      if (typeof window.getTranscriptForAnalysis === 'function' &&
+          typeof window.markTranscriptAnalyzed === 'function' &&
+          typeof window.getFullTranscriptContext === 'function') {
+        log('✓ Analysis utility functions available', 'success');
+      } else {
+        log('✗ Analysis utility functions missing', 'error');
+      }
+      
+      updateStats();
+      log('Initial tests completed. Use buttons above to test functionality.', 'success');
+    }
+    
+    // Run tests when page loads
+    window.addEventListener('load', runInitialTests);
+  </script>
+</body>
+</html>

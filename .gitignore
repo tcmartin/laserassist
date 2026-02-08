@@ -1,0 +1,98 @@
+# Native core and existing exclusions
+native-core
+.insighto/settings/mcp.json
+enterprise_prompt.md
+.gemini/
+.temp-user-data
+node_modules
+models
+.kiro/settings/mcp.json
+
+# Build artifacts and distribution files
+dist/
+dist-app/
+*.dmg
+*.exe
+*.AppImage
+*.deb
+*.rpm
+*.tar.gz
+*.zip
+
+# Python build environment and artifacts
+build-venv/
+venv/
+env/
+.env
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+build/
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller artifacts
+*.spec
+dist/
+build/
+
+# Electron builder artifacts
+electron-builder-config.js
+builder-debug.yml
+builder-effective-config.yaml
+latest-mac.yml
+*.blockmap
+
+# Large binary files
+cluely-asr
+cluely-asr.exe
+*.bin
+*.model
+
+# Temporary files
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Cache directories
+.cache/
+.npm/
+.yarn/
+.pnpm-store/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db

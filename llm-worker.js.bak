@@ -1,0 +1,394 @@
+const { parentPort } = require('worker_threads');
+const path = require('path');
+
+// Request queue to handle both chat and analysis requests with performance optimizations
+class RequestQueue {
+  constructor() {
+    this.chatQueue = [];
+    this.analysisQueue = [];
+    this.processing = false;
+    this.lastProcessTime = 0;
+    this.processingStats = {
+      chatRequests: 0,
+      analysisRequests: 0,
+      averageChatTime: 0,
+      averageAnalysisTime: 0
+    };
+  }
+
+  addChatRequest(request) {
+    // Limit chat queue size to prevent memory issues
+    if (this.chatQueue.length > 10) {
+      this.chatQueue.shift(); // Remove oldest request
+    }
+    
+    this.chatQueue.push({
+      ...request,
+      timestamp: Date.now(),
+      type: 'chat'
+    });
+    this.processNext();
+  }
+
+  addAnalysisRequest(request) {
+    // Limit analysis queue size and remove duplicates
+    if (this.analysisQueue.length > 5) {
+      this.analysisQueue.shift(); // Remove oldest request
+    }
+    
+    this.analysisQueue.push({
+      ...request,
+      timestamp: Date.now(),
+      type: 'analysis'
+    });
+    this.processNext();
+  }
+
+  async processNext() {
+    if (this.processing) return;
+    
+    // Prioritize chat requests over analysis requests
+    const request = this.chatQueue.shift() || this.analysisQueue.shift();
+    if (!request) return;
+
+    this.processing = true;
+    const startTime = Date.now();
+    
+    try {
+      // Handle requests with appropriate timeout handling
+      if (request.type === 'chat') {
+        // Keep timeout for chat to maintain responsiveness
+        await Promise.race([
+          request.handler(),
+          new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Chat request timeout')), 60000); // 60s for chat
+          })
+        ]);
+      } else {
+        // No timeout for analysis - let it take as long as needed
+        await request.handler();
+      }
+      
+      // Update performance stats
+      const processingTime = Date.now() - startTime;
+      this.updateStats(request.type, processingTime);
+      
+    } catch (err) {
+      console.error('Request processing error:', err);
+      // Handle timeout or other errors gracefully
+      if (err.message === 'Request timeout') {
+        parentPort.postMessage({
+          type: 'performance-warning',
+          message: `${request.type} request timed out - local LLM may be overloaded`
+        });
+      }
+    } finally {
+      this.processing = false;
+      this.lastProcessTime = Date.now();
+      
+      // Add small delay between requests to prevent overwhelming local LLM
+      const delay = this.getAdaptiveDelay();
+      setTimeout(() => {
+        if (this.chatQueue.length > 0 || this.analysisQueue.length > 0) {
+          this.processNext();
+        }
+      }, delay);
+    }
+  }
+
+  updateStats(type, processingTime) {
+    if (type === 'chat') {
+      this.processingStats.chatRequests++;
+      this.processingStats.averageChatTime = 
+        (this.processingStats.averageChatTime + processingTime) / 2;
+    } else {
+      this.processingStats.analysisRequests++;
+      this.processingStats.averageAnalysisTime = 
+        (this.processingStats.averageAnalysisTime + processingTime) / 2;
+    }
+  }
+
+  getAdaptiveDelay() {
+    // Adaptive delay based on queue size and recent performance
+    const queueSize = this.chatQueue.length + this.analysisQueue.length;
+    const baseDelay = 100; // Base 100ms delay
+    
+    if (queueSize > 3) return baseDelay * 2; // Slow down if queue is building up
+    if (this.processingStats.averageChatTime > 10000) return baseDelay * 1.5; // Slow down if LLM is struggling
+    
+    return baseDelay;
+  }
+
+  getQueueStatus() {
+    return {
+      chatQueue: this.chatQueue.length,
+      analysisQueue: this.analysisQueue.length,
+      processing: this.processing,
+      stats: this.processingStats
+    };
+  }
+}
+
+// Analysis prompt templates
+const ANALYSIS_PROMPTS = {
+  summary: (transcript, context, timeRange) => `Summarize this conversation in 2-3 sentences:
+
+${transcript}
+
+Focus on key points and decisions.`,
+
+  suggestions: (transcript, context) => `Based on this conversation, provide 2-3 actionable suggestions in JSON format:
+
+${transcript}
+
+Respond with JSON only:
+{
+  "actionItems": ["suggestion1", "suggestion2"],
+  "questions": ["question1"],
+  "topics": ["topic1"]
+}`
+};
+
+(async () => {
+  try {
+    parentPort.postMessage({ type: 'status', message: 'Loading LLM model...' });
+    
+    const modelFileName = 'gemma-3-4b-it-Q4_0.gguf';
+    const modelPath = path.join(__dirname, 'models', modelFileName);
+    
+    const { getLlama, LlamaChatSession } = await import('node-llama-cpp');
+    const llama = await getLlama();
+    
+    try {
+      const model = await llama.loadModel({ modelPath });
+      const ctx = await model.createContext({contextSize: {min: 20000}});
+      const session = new LlamaChatSession({ contextSequence: ctx.getSequence() });
+      const requestQueue = new RequestQueue();
+      
+      parentPort.postMessage({ type: 'ready' });
+      
+      // Send periodic status updates about queue and performance
+      setInterval(() => {
+        const status = requestQueue.getQueueStatus();
+        if (status.chatQueue > 0 || status.analysisQueue > 0 || status.processing) {
+          parentPort.postMessage({
+            type: 'queue-status',
+            status
+          });
+        }
+      }, 2000); // Every 2 seconds
+      
+      // Handle different message types
+      parentPort.on('message', async (message) => {
+        const { type, id } = message;
+        
+        try {
+          switch (type) {
+            case 'chat':
+            case undefined: // Backward compatibility for existing chat requests
+              handleChatRequest(message, session, requestQueue);
+              break;
+              
+            case 'analyze-transcript':
+              handleAnalysisRequest(message, session, requestQueue);
+              break;
+              
+            default:
+              parentPort.postMessage({
+                id,
+                type: 'error',
+                error: `Unknown message type: ${type}`
+              });
+          }
+        } catch (err) {
+          parentPort.postMessage({
+            id,
+            type: 'error',
+            error: `Message handling error: ${err.toString()}`
+          });
+        }
+      });
+      
+      // Handle chat requests (existing functionality with transcript context)
+      function handleChatRequest(message, session, requestQueue) {
+        const { id, prompt, transcriptContext } = message;
+        
+        requestQueue.addChatRequest({
+          handler: async () => {
+            try {
+              // Build context-aware prompt that includes recent transcript
+              let contextualPrompt = prompt;
+              
+              if (transcriptContext && transcriptContext.trim().length > 0) {
+                contextualPrompt = `Recent conversation context:
+${transcriptContext}
+
+User question: ${prompt}
+
+Please respond considering the conversation context above.`;
+              }
+              
+              const response = await session.prompt(contextualPrompt);
+              parentPort.postMessage({ id, response });
+            } catch (err) {
+              parentPort.postMessage({ id, error: err.toString() });
+            }
+          }
+        });
+      }
+      
+      // Handle analysis requests (new functionality with performance optimizations)
+      function handleAnalysisRequest(message, session, requestQueue) {
+        const { id, transcript, context, analysisType, timeRange } = message;
+        
+        // Validate input
+        if (!transcript || transcript.trim().length === 0) {
+          parentPort.postMessage({
+            id,
+            type: 'analysis-error',
+            error: 'Empty or invalid transcript provided'
+          });
+          return;
+        }
+
+        // Skip analysis if transcript is too short to be meaningful
+        if (transcript.trim().length < 50) {
+          parentPort.postMessage({
+            id,
+            type: 'analysis-response',
+            results: {
+              summary: 'Transcript too short for meaningful analysis',
+              suggestions: { actionItems: [], questions: [], topics: [] }
+            },
+            timeRange
+          });
+          return;
+        }
+        
+        requestQueue.addAnalysisRequest({
+          handler: async () => {
+            try {
+              // Send progress indicator for long-running analysis
+              parentPort.postMessage({
+                id,
+                type: 'analysis-progress',
+                message: 'Starting transcript analysis...'
+              });
+              
+              const results = {};
+              const startTime = Date.now();
+              
+              // Truncate very long transcripts to prevent overwhelming local LLM
+              const maxTranscriptLength = 2000;
+              const truncatedTranscript = transcript.length > maxTranscriptLength 
+                ? transcript.substring(transcript.length - maxTranscriptLength)
+                : transcript;
+              
+              // Generate summary if requested
+              if (!analysisType || analysisType.includes('summary')) {
+                try {
+                  parentPort.postMessage({
+                    id,
+                    type: 'analysis-progress',
+                    message: 'Generating summary...'
+                  });
+                  
+                  const summaryPrompt = ANALYSIS_PROMPTS.summary(truncatedTranscript, context, timeRange);
+                  const summaryResponse = await session.prompt(summaryPrompt);
+                  results.summary = summaryResponse.trim();
+                } catch (err) {
+                  console.error('Summary generation error:', err);
+                  results.summaryError = `Summary generation failed: ${err.toString()}`;
+                  // Provide fallback summary
+                  results.summary = `Analysis unavailable. Recent discussion: ${truncatedTranscript.substring(0, 100)}...`;
+                }
+              }
+              
+              // Generate suggestions if requested (only if summary succeeded or wasn't requested)
+              if ((!analysisType || analysisType.includes('suggestions')) && !results.summaryError) {
+                try {
+                  parentPort.postMessage({
+                    id,
+                    type: 'analysis-progress',
+                    message: 'Generating suggestions...'
+                  });
+                  
+                  const suggestionsPrompt = ANALYSIS_PROMPTS.suggestions(truncatedTranscript, context);
+                  const suggestionsResponse = await session.prompt(suggestionsPrompt);
+                  
+                  // Try to parse JSON response with better error handling
+                  try {
+                    const cleanResponse = suggestionsResponse.trim();
+                    // Extract JSON if it's wrapped in markdown code blocks
+                    const jsonMatch = cleanResponse.match(/```(?:json)?\s*(\{[\s\S]*\})\s*```/) || 
+                                     cleanResponse.match(/(\{[\s\S]*\})/);
+                    
+                    if (jsonMatch) {
+                      results.suggestions = JSON.parse(jsonMatch[1]);
+                    } else {
+                      throw new Error('No JSON found in response');
+                    }
+                  } catch (parseErr) {
+                    console.error('JSON parsing error:', parseErr);
+                    // Provide structured fallback
+                    results.suggestions = {
+                      actionItems: [],
+                      questions: [],
+                      topics: [],
+                      raw: suggestionsResponse.trim(),
+                      parseError: parseErr.toString()
+                    };
+                  }
+                } catch (err) {
+                  console.error('Suggestions generation error:', err);
+                  results.suggestionsError = `Suggestions generation failed: ${err.toString()}`;
+                  // Provide empty structured response
+                  results.suggestions = {
+                    actionItems: [],
+                    questions: [],
+                    topics: []
+                  };
+                }
+              } else if (results.summaryError) {
+                // Skip suggestions if summary failed to avoid overloading LLM
+                results.suggestions = {
+                  actionItems: [],
+                  questions: [],
+                  topics: []
+                };
+              }
+              
+              const processingTime = Date.now() - startTime;
+              
+              parentPort.postMessage({
+                id,
+                type: 'analysis-response',
+                results,
+                timeRange,
+                processingTime,
+                queueStatus: requestQueue.getQueueStatus()
+              });
+              
+            } catch (err) {
+              console.error('Analysis handler error:', err);
+              parentPort.postMessage({
+                id,
+                type: 'analysis-error',
+                error: `Analysis failed: ${err.toString()}`,
+                queueStatus: requestQueue.getQueueStatus()
+              });
+            }
+          }
+        });
+      }
+      
+    } catch (err) {
+      parentPort.postMessage({ 
+        type: 'error', 
+        error: `Failed to load model: ${err.toString()}. Make sure the model file exists at ${modelPath}` 
+      });
+    }
+  } catch (err) {
+    parentPort.postMessage({ type: 'error', error: err.toString() });
+  }
+})();

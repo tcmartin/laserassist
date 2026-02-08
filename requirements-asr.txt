@@ -1,0 +1,5 @@
+websockets>=11
+numpy
+torch            # version matching your CUDA/Metal setup
+torchaudio
+nemo_toolkit[asr]
