@@ -5,6 +5,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setHostedConfig: (config) => ipcRenderer.invoke('hosted-set-config', config),
   getHostedReminders: () => ipcRenderer.invoke('hosted-get-reminders'),
 
+  authOpenLogin: () => ipcRenderer.invoke('auth-open-login'),
+  authLoginPassword: (payload) => ipcRenderer.invoke('auth-login-password', payload || {}),
+  authSignOut: () => ipcRenderer.invoke('auth-signout'),
+  authStatus: () => ipcRenderer.invoke('auth-status'),
+  authListOrgs: () => ipcRenderer.invoke('auth-list-orgs'),
+  authOpenExternal: (url) => ipcRenderer.invoke('auth-open-external', { url }),
+  onAuthUpdated: (callback) => ipcRenderer.on('auth-updated', (_e, msg) => callback(msg)),
+
+  openOverlayPanel: (payload) => ipcRenderer.invoke('overlay-open-panel', payload || {}),
+  closeOverlayPanel: (key) => ipcRenderer.invoke('overlay-close-panel', { key }),
+  listOverlayPanels: () => ipcRenderer.invoke('overlay-list-panels'),
+
+  windowMinimize: () => ipcRenderer.invoke('window-minimize'),
+  windowClose: () => ipcRenderer.invoke('window-close'),
+  windowTogglePin: () => ipcRenderer.invoke('window-toggle-pin'),
+
   sendPrompt: (id, prompt, transcriptContext) => ipcRenderer.send('llm-prompt', { id, prompt, transcriptContext }),
   onResponse: (callback) => ipcRenderer.on('llm-response', (_e, msg) => callback(msg)),
 

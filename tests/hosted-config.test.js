@@ -9,10 +9,12 @@ const { normalizeConfig, HostedConfigStore } = require('../src/hosted-config');
 test('normalizeConfig enforces defaults and bounds', () => {
   const cfg = normalizeConfig({
     backendUrl: 'http://localhost:8788///',
+    frontendUrl: 'http://localhost:3100///',
     lookaheadMinutes: 999,
     analysisModel: '',
   });
   assert.equal(cfg.backendUrl, 'http://localhost:8788');
+  assert.equal(cfg.frontendUrl, 'http://localhost:3100');
   assert.equal(cfg.lookaheadMinutes, 240);
   assert.equal(cfg.analysisModel, 'gpt-5-mini');
 });
@@ -27,6 +29,7 @@ test('HostedConfigStore persists and validates config', () => {
 
   cfg = store.set({
     backendUrl: 'http://example.test/',
+    frontendUrl: 'http://app.example.test/',
     tenantId: 'orgl',
     jwtToken: 'jwt',
     lookaheadMinutes: 15,
@@ -34,6 +37,7 @@ test('HostedConfigStore persists and validates config', () => {
   });
 
   assert.equal(cfg.backendUrl, 'http://example.test');
+  assert.equal(cfg.frontendUrl, 'http://app.example.test');
   assert.equal(cfg.tenantId, 'orgl');
   assert.equal(cfg.jwtToken, 'jwt');
   assert.equal(cfg.lookaheadMinutes, 15);

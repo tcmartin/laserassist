@@ -51,6 +51,20 @@ class HostedApiClient {
     });
   }
 
+  async getUser() {
+    return this._request('/user/me', {
+      method: 'GET',
+      headers: this._headers(),
+    });
+  }
+
+  async getOrgs() {
+    return this._request('/me/orgs', {
+      method: 'GET',
+      headers: this._headers(),
+    });
+  }
+
   async transcribeWav(wavBuffer) {
     return this._request('/api/abm/intelli/transcribe', {
       method: 'POST',

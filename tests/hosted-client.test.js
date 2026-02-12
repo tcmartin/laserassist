@@ -31,6 +31,18 @@ function createServer() {
         return;
       }
 
+      if (req.url === '/user/me') {
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ username: 'trevor', email: 'trevor@example.com' }));
+        return;
+      }
+
+      if (req.url === '/me/orgs') {
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify([{ org_id: 'orgl', name: 'Laserreach Org' }]));
+        return;
+      }
+
       if (req.url === '/api/abm/intelli/sessions/start') {
         res.setHeader('Content-Type', 'application/json');
         res.end(JSON.stringify({ success: true }));
@@ -90,6 +102,13 @@ test('HostedApiClient calls hosted endpoints with required headers', async () =>
   const analyzed = await client.analyze({ transcript: 'abc', analysisType: 'summary' });
   assert.equal(analyzed.success, true);
   assert.equal(analyzed.parsed.summary, 'ok');
+
+  const me = await client.getUser();
+  assert.equal(me.username, 'trevor');
+
+  const orgs = await client.getOrgs();
+  assert.equal(Array.isArray(orgs), true);
+  assert.equal(orgs[0].org_id, 'orgl');
 
   await client.sessionStart({ sessionId: 'sess_1', metadata: { source: 'test' } });
   await client.sessionAppendEvent({ sessionId: 'sess_1', type: 'analysis', payload: { x: 1 } });

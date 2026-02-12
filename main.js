@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, globalShortcut } = require('electron');
+const { app, BrowserWindow, ipcMain, globalShortcut, shell, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -6,14 +6,36 @@ const { HostedConfigStore } = require('./src/hosted-config');
 const { HostedApiClient } = require('./src/hosted-client');
 const { HostedAudioTranscriber } = require('./src/hosted-audio');
 
-let mainWindow = null;
+let barWindow = null;
+let authWindow = null;
 let hostedConfigStore = null;
 let hostedClient = null;
 let audioTranscriber = null;
+let isPinned = true;
+let panelCounter = 0;
+const panelWindows = new Map();
+const meetingAlertedIds = new Set();
 
 function safeSend(channel, payload) {
-  if (!mainWindow || mainWindow.isDestroyed()) return;
-  mainWindow.webContents.send(channel, payload);
+  if (!barWindow || barWindow.isDestroyed()) return;
+  barWindow.webContents.send(channel, payload);
+}
+
+function safeJsonParse(text, fallback) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return fallback;
+  }
+}
+
+function escapeHtml(input) {
+  return String(input || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function createHostedRuntime() {
@@ -27,24 +49,26 @@ function createHostedRuntime() {
     onTranscript: (msg) => safeSend('asr-message', msg),
     onStatus: (msg) => safeSend('asr-message', msg),
     onError: (msg) => safeSend('asr-message', msg),
-    flushIntervalMs: 3200,
-    minBytes: 32000,
+    flushIntervalMs: 2600,
+    minBytes: 28000,
   });
 }
 
-function createWindow() {
-  mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 820,
-    minWidth: 760,
-    minHeight: 520,
+function createBarWindow() {
+  barWindow = new BrowserWindow({
+    width: 960,
+    height: 72,
+    minWidth: 860,
+    minHeight: 64,
+    maxHeight: 120,
     frame: false,
-    transparent: false,
-    title: 'Laserreach Intelli',
-    movable: true,
+    transparent: true,
     resizable: true,
+    movable: true,
     alwaysOnTop: true,
-    backgroundColor: '#0b0f17',
+    backgroundColor: '#00000000',
+    hasShadow: false,
+    skipTaskbar: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -53,17 +77,17 @@ function createWindow() {
     },
   });
 
-  mainWindow.loadFile('index.html');
-  mainWindow.once('ready-to-show', () => {
+  barWindow.loadFile('index.html');
+  barWindow.once('ready-to-show', () => {
     safeSend('model-status', {
       state: 'ready',
       tier: 'hosted',
-      message: 'Hosted runtime ready (Deepgram + GPT-5-mini via Laserreach backend)',
+      message: 'Laserreach Intelli overlay ready (Deepgram + GPT-5-mini)',
     });
   });
 
-  mainWindow.on('closed', () => {
-    mainWindow = null;
+  barWindow.on('closed', () => {
+    barWindow = null;
   });
 }
 
@@ -71,12 +95,12 @@ function registerShortcuts() {
   const toggleShortcut = process.platform === 'darwin' ? 'Command+Shift+Space' : 'Control+Shift+Space';
   try {
     globalShortcut.register(toggleShortcut, () => {
-      if (!mainWindow || mainWindow.isDestroyed()) return;
-      if (mainWindow.isVisible()) {
-        mainWindow.hide();
+      if (!barWindow || barWindow.isDestroyed()) return;
+      if (barWindow.isVisible()) {
+        barWindow.hide();
       } else {
-        mainWindow.show();
-        mainWindow.focus();
+        barWindow.show();
+        barWindow.focus();
       }
     });
   } catch (err) {
@@ -105,16 +129,354 @@ function ensureHostedConfigured() {
   return validation.config;
 }
 
+async function fetchJson(url, options = {}) {
+  const res = await fetch(url, options);
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status}: ${text.slice(0, 500)}`);
+  }
+  return safeJsonParse(text, {});
+}
+
+async function inferTenantId(backendUrl, jwtToken, fallbackTenantId = '') {
+  const headers = {
+    Authorization: `Bearer ${jwtToken}`,
+  };
+  try {
+    const orgs = await fetchJson(`${backendUrl}/me/orgs`, { method: 'GET', headers });
+    if (Array.isArray(orgs) && orgs.length) {
+      const firstOrg = orgs.find((o) => o && o.org_id) || orgs[0];
+      if (firstOrg && firstOrg.org_id) return String(firstOrg.org_id);
+    }
+  } catch (_) {
+    // no-op
+  }
+  return String(fallbackTenantId || '');
+}
+
+function normalizeBackendUrl(url) {
+  return String(url || '').trim().replace(/\/+$/, '');
+}
+
+function appendAuthCandidates(list, baseUrl) {
+  const base = normalizeBackendUrl(baseUrl);
+  if (!base) return;
+  list.push(`${base}/login`);
+  list.push(`${base}/register`);
+  list.push(`${base}/`);
+}
+
+function deriveFrontendBases(backendUrl) {
+  const base = normalizeBackendUrl(backendUrl);
+  if (!base) return [];
+  try {
+    const parsed = new URL(base);
+    const host = parsed.hostname;
+    const isLocalHost =
+      host === 'localhost' ||
+      host === '127.0.0.1' ||
+      host === '0.0.0.0' ||
+      host === '::1';
+    if (!isLocalHost) return [];
+    return [
+      `${parsed.protocol}//${host}:3100`,
+      `${parsed.protocol}//${host}:3000`,
+      `${parsed.protocol}//${host}:3125`,
+    ];
+  } catch (_) {
+    return [];
+  }
+}
+
+function loginUrlCandidates(config = {}) {
+  const out = [];
+  const seen = new Set();
+  const pushUnique = (url) => {
+    const normalized = normalizeBackendUrl(url);
+    if (!normalized || seen.has(normalized)) return;
+    seen.add(normalized);
+    out.push(normalized);
+  };
+
+  const withPaths = [];
+  appendAuthCandidates(withPaths, config.frontendUrl || '');
+  for (const derived of deriveFrontendBases(config.backendUrl || '')) {
+    appendAuthCandidates(withPaths, derived);
+  }
+  appendAuthCandidates(withPaths, config.backendUrl || '');
+
+  for (const candidate of withPaths) pushUnique(candidate);
+  return out;
+}
+
+async function captureAuthFromWindow(win) {
+  if (!win || win.isDestroyed()) return null;
+  const script = `(() => {
+    try {
+      const jwt = localStorage.getItem('jwt') || localStorage.getItem('access_token') || localStorage.getItem('token') || '';
+      const tenantId = localStorage.getItem('currentOrgId') || '';
+      const username = localStorage.getItem('username') || '';
+      return { jwt, tenantId, username, href: location.href };
+    } catch (e) {
+      return { jwt: '', tenantId: '', username: '', error: String(e) };
+    }
+  })();`;
+  try {
+    const out = await win.webContents.executeJavaScript(script, true);
+    if (!out || !out.jwt) return null;
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+async function applyAuthToken({ token, backendUrl, tenantId, username }) {
+  const current = hostedConfigStore.get();
+  const nextBackend = normalizeBackendUrl(backendUrl || current.backendUrl || 'http://localhost:8788');
+  let nextTenant = String(tenantId || current.tenantId || '').trim();
+  if (!nextTenant) {
+    nextTenant = await inferTenantId(nextBackend, token, nextTenant);
+  }
+
+  const saved = hostedConfigStore.set({
+    backendUrl: nextBackend,
+    tenantId: nextTenant,
+    jwtToken: String(token || '').trim(),
+  });
+
+  safeSend('auth-updated', {
+    success: true,
+    tenantId: saved.tenantId,
+    username: username || '',
+    backendUrl: saved.backendUrl,
+  });
+
+  return saved;
+}
+
+async function openAuthWindow() {
+  if (authWindow && !authWindow.isDestroyed()) {
+    authWindow.focus();
+    return { success: true, message: 'auth_window_focused' };
+  }
+
+  const cfg = hostedConfigStore.get();
+  const candidates = loginUrlCandidates(cfg);
+  const startUrl = candidates[0] || 'http://localhost:8788';
+
+  authWindow = new BrowserWindow({
+    width: 1120,
+    height: 780,
+    parent: barWindow || undefined,
+    modal: false,
+    autoHideMenuBar: true,
+    show: false,
+    webPreferences: {
+      contextIsolation: true,
+      sandbox: false,
+    },
+  });
+
+  const tryCapture = async () => {
+    const captured = await captureAuthFromWindow(authWindow);
+    if (!captured || !captured.jwt) return false;
+    await applyAuthToken({
+      token: captured.jwt,
+      backendUrl: cfg.backendUrl,
+      tenantId: captured.tenantId,
+      username: captured.username,
+    });
+    if (authWindow && !authWindow.isDestroyed()) authWindow.close();
+    return true;
+  };
+
+  let captureTimer = null;
+
+  authWindow.once('ready-to-show', () => authWindow.show());
+  authWindow.webContents.on('did-finish-load', () => {
+    tryCapture().catch(() => {});
+  });
+  authWindow.webContents.on('did-navigate', () => {
+    tryCapture().catch(() => {});
+  });
+  authWindow.webContents.on('did-navigate-in-page', () => {
+    tryCapture().catch(() => {});
+  });
+
+  authWindow.on('closed', () => {
+    authWindow = null;
+    if (captureTimer) {
+      clearInterval(captureTimer);
+      captureTimer = null;
+    }
+  });
+
+  captureTimer = setInterval(() => {
+    tryCapture().catch(() => {});
+  }, 1200);
+
+  try {
+    await authWindow.loadURL(startUrl);
+  } catch (err) {
+    for (const alt of candidates.slice(1)) {
+      try {
+        await authWindow.loadURL(alt);
+        return { success: true };
+      } catch (_) {
+        // try next
+      }
+    }
+    return { success: false, error: String(err?.message || err) };
+  }
+
+  return { success: true };
+}
+
+function panelHtml(payload) {
+  const title = escapeHtml(payload?.title || 'Insight');
+  const subtitle = escapeHtml(payload?.subtitle || '');
+  const content = escapeHtml(payload?.content || '').replace(/\n/g, '<br/>');
+  const chips = Array.isArray(payload?.chips)
+    ? payload.chips.map((c) => `<span class="chip">${escapeHtml(c)}</span>`).join('')
+    : '';
+  const links = Array.isArray(payload?.links)
+    ? payload.links
+        .filter((l) => l && l.href)
+        .map((l) => `<a class="link" href="${escapeHtml(l.href)}" target="_blank">${escapeHtml(l.label || l.href)}</a>`)
+        .join('')
+    : '';
+
+  return `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+:root { --bg: rgba(12,14,20,0.93); --line: rgba(122,161,255,0.35); --text: #eef4ff; --muted: #9fb1d5; }
+* { box-sizing: border-box; }
+body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: transparent; color: var(--text); }
+.panel {
+  border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
+  background: linear-gradient(170deg, rgba(24,30,46,0.96), rgba(8,10,15,0.95));
+  box-shadow: 0 16px 44px rgba(0,0,0,0.45); height: 100vh; display: flex; flex-direction: column;
+}
+.header {
+  padding: 10px 12px; display: flex; justify-content: space-between; align-items: flex-start;
+  border-bottom: 1px solid rgba(122,161,255,0.25); -webkit-app-region: drag;
+}
+.title { font-size: 14px; font-weight: 700; line-height: 1.2; }
+.subtitle { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.close { -webkit-app-region: no-drag; border: none; background: transparent; color: #d7e4ff; font-size: 18px; cursor: pointer; }
+.body { padding: 12px; overflow: auto; font-size: 13px; line-height: 1.45; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.chip { font-size: 11px; color: #c9daf9; background: rgba(78,118,208,0.3); border: 1px solid rgba(124,156,233,0.45); border-radius: 999px; padding: 2px 8px; }
+.links { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
+.link { color: #9dc0ff; text-decoration: none; }
+.link:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+  <div class="panel">
+    <div class="header">
+      <div>
+        <div class="title">${title}</div>
+        <div class="subtitle">${subtitle}</div>
+      </div>
+      <button class="close" onclick="window.close()">×</button>
+    </div>
+    <div class="body">
+      <div class="chips">${chips}</div>
+      <div>${content}</div>
+      <div class="links">${links}</div>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+function nextPanelBounds(width, height) {
+  const workArea = screen.getPrimaryDisplay().workArea;
+  const offset = (panelCounter % 7) * 26;
+  const x = Math.max(workArea.x + 24, workArea.x + workArea.width - width - 24 - offset);
+  const y = Math.max(workArea.y + 88, workArea.y + 88 + offset);
+  panelCounter += 1;
+  return { x, y, width, height };
+}
+
+function openPanel(payload = {}) {
+  const width = Math.max(320, Math.min(Number(payload.width || 430), 760));
+  const height = Math.max(220, Math.min(Number(payload.height || 340), 900));
+  const key = String(payload.key || `panel_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`);
+
+  const existing = panelWindows.get(key);
+  if (existing && !existing.isDestroyed()) {
+    existing.focus();
+    return { success: true, key, reused: true };
+  }
+
+  const bounds = nextPanelBounds(width, height);
+  const panel = new BrowserWindow({
+    ...bounds,
+    frame: false,
+    transparent: true,
+    resizable: true,
+    movable: true,
+    minimizable: false,
+    maximizable: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    hasShadow: true,
+    webPreferences: {
+      contextIsolation: true,
+      sandbox: false,
+    },
+  });
+
+  panel.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(panelHtml(payload))}`);
+  panel.on('closed', () => {
+    panelWindows.delete(key);
+  });
+
+  panelWindows.set(key, panel);
+  return { success: true, key, reused: false };
+}
+
+function closePanel(key) {
+  const panel = panelWindows.get(String(key || ''));
+  if (!panel || panel.isDestroyed()) return { success: false, error: 'panel_not_found' };
+  panel.close();
+  return { success: true };
+}
+
+function cleanup() {
+  try {
+    globalShortcut.unregisterAll();
+  } catch (_) {}
+
+  try {
+    if (audioTranscriber) audioTranscriber.stop();
+  } catch (_) {}
+
+  for (const [, win] of panelWindows) {
+    try {
+      if (win && !win.isDestroyed()) win.close();
+    } catch (_) {}
+  }
+  panelWindows.clear();
+
+  try {
+    if (authWindow && !authWindow.isDestroyed()) authWindow.close();
+  } catch (_) {}
+}
+
 async function handleAnalyzeRequest(payload, fallbackType = 'full') {
   const cfg = ensureHostedConfigured();
   const prompt = String(payload?.prompt || '').trim();
   const transcriptContext = String(payload?.transcriptContext || '').trim();
   const transcript = String(payload?.transcript || transcriptContext || prompt).trim();
-  if (!transcript) {
-    throw new Error('Transcript is required for analysis');
-  }
+  if (!transcript) throw new Error('Transcript is required for analysis');
 
-  const result = await hostedClient.analyze({
+  return hostedClient.analyze({
     transcript,
     prompt,
     analysisType: payload?.analysisType || payload?.analysis_type || fallbackType,
@@ -123,11 +485,141 @@ async function handleAnalyzeRequest(payload, fallbackType = 'full') {
     eventId: payload?.eventId || payload?.event_id || undefined,
     model: payload?.model || cfg.analysisModel || 'gpt-5-mini',
   });
-
-  return result;
 }
 
 function registerIpc() {
+  ipcMain.handle('window-minimize', () => {
+    if (barWindow && !barWindow.isDestroyed()) barWindow.minimize();
+    return { success: true };
+  });
+
+  ipcMain.handle('window-close', () => {
+    app.quit();
+    return { success: true };
+  });
+
+  ipcMain.handle('window-toggle-pin', () => {
+    isPinned = !isPinned;
+    if (barWindow && !barWindow.isDestroyed()) {
+      barWindow.setAlwaysOnTop(isPinned);
+    }
+    return { success: true, pinned: isPinned };
+  });
+
+  ipcMain.handle('overlay-open-panel', async (_e, payload) => openPanel(payload));
+  ipcMain.handle('overlay-close-panel', async (_e, payload) => closePanel(payload?.key));
+  ipcMain.handle('overlay-list-panels', async () => ({ success: true, keys: [...panelWindows.keys()] }));
+
+  ipcMain.handle('auth-open-login', async () => openAuthWindow());
+
+  ipcMain.handle('auth-login-password', async (_e, payload) => {
+    try {
+      const cfg = hostedConfigStore.get();
+      const backendUrl = normalizeBackendUrl(payload?.backendUrl || cfg.backendUrl || 'http://localhost:8788');
+      const username = String(payload?.username || '').trim();
+      const password = String(payload?.password || '').trim();
+      if (!username || !password) {
+        return { success: false, error: 'username_and_password_required' };
+      }
+
+      const result = await fetchJson(`${backendUrl}/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+
+      const token = result?.access_token || result?.token;
+      if (!token) {
+        return { success: false, error: result?.message || result?.error || 'login_failed' };
+      }
+
+      const saved = await applyAuthToken({
+        token,
+        backendUrl,
+        tenantId: payload?.tenantId || '',
+        username: result?.username || username,
+      });
+
+      return { success: true, config: saved, username: result?.username || username };
+    } catch (err) {
+      return { success: false, error: String(err?.message || err) };
+    }
+  });
+
+  ipcMain.handle('auth-signout', async () => {
+    try {
+      const cfg = hostedConfigStore.get();
+      const saved = hostedConfigStore.set({
+        ...cfg,
+        jwtToken: '',
+      });
+      safeSend('auth-updated', { success: true, signedOut: true, tenantId: saved.tenantId });
+      return { success: true, config: saved };
+    } catch (err) {
+      return { success: false, error: String(err?.message || err) };
+    }
+  });
+
+  ipcMain.handle('auth-status', async () => {
+    try {
+      const cfg = hostedConfigStore.get();
+      const hasToken = Boolean(cfg.jwtToken);
+      if (!hasToken) {
+        return { success: true, authenticated: false, config: cfg };
+      }
+      const me = await fetchJson(`${cfg.backendUrl}/user/me`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${cfg.jwtToken}` },
+      });
+      return {
+        success: true,
+        authenticated: true,
+        user: {
+          username: me?.username || '',
+          email: me?.email || '',
+        },
+        config: cfg,
+      };
+    } catch (err) {
+      return { success: true, authenticated: false, error: String(err?.message || err), config: hostedConfigStore.get() };
+    }
+  });
+
+  ipcMain.handle('auth-list-orgs', async () => {
+    try {
+      const cfg = hostedConfigStore.get();
+      if (!cfg.jwtToken) {
+        return { success: true, orgs: [] };
+      }
+      const orgs = await fetchJson(`${cfg.backendUrl}/me/orgs`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${cfg.jwtToken}` },
+      });
+      const normalized = Array.isArray(orgs)
+        ? orgs
+            .map((org) => ({
+              org_id: org?.org_id ? String(org.org_id) : '',
+              name: org?.name ? String(org.name) : '',
+            }))
+            .filter((org) => org.org_id)
+        : [];
+      return { success: true, orgs: normalized };
+    } catch (err) {
+      return { success: false, error: String(err?.message || err), orgs: [] };
+    }
+  });
+
+  ipcMain.handle('auth-open-external', async (_e, payload) => {
+    try {
+      const cfg = hostedConfigStore.get();
+      const target = String(payload?.url || `${cfg.backendUrl}/`).trim();
+      await shell.openExternal(target);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: String(err?.message || err) };
+    }
+  });
+
   ipcMain.handle('hosted-get-config', async () => {
     try {
       return { success: true, config: hostedConfigStore.get() };
@@ -149,7 +641,29 @@ function registerIpc() {
     try {
       ensureHostedConfigured();
       const result = await hostedClient.getReminders();
-      return { success: true, reminders: result.reminders || [], count: Number(result.count || 0) };
+
+      const reminders = (result.reminders || []).map((r) => ({ ...r }));
+      for (const r of reminders) {
+        const eventId = String(r.event_id || '');
+        const inMinutes = Number(r.in_minutes || NaN);
+        if (eventId && Number.isFinite(inMinutes) && inMinutes >= 0 && inMinutes <= 10 && !meetingAlertedIds.has(eventId)) {
+          meetingAlertedIds.add(eventId);
+          openPanel({
+            key: `meeting_${eventId}`,
+            title: 'Upcoming meeting',
+            subtitle: `${r.person_name || 'Contact'} • ${r.company_name || 'Account'}`,
+            content: `${r.message_preview || 'Meeting starts soon.'}\nTime: ${r.scheduled_at || ''}`,
+            chips: [
+              `in ${inMinutes}m`,
+              r.pipeline_status ? `pipeline: ${r.pipeline_status}` : '',
+            ].filter(Boolean),
+            width: 440,
+            height: 260,
+          });
+        }
+      }
+
+      return { success: true, reminders, count: Number(result.count || reminders.length || 0) };
     } catch (err) {
       return { success: false, error: String(err?.message || err), reminders: [], count: 0 };
     }
@@ -173,19 +687,18 @@ function registerIpc() {
     try {
       const result = await handleAnalyzeRequest(payload, 'full');
       const parsed = result?.parsed || {};
-      const normalized = {
-        summary: parsed.summary || result?.text || '',
-        suggestions: {
-          actionItems: parsed.actionItems || parsed.next_best_actions || [],
-          questions: parsed.questions || parsed.discovery_questions || [],
-          topics: parsed.topics || [],
-          activities: parsed.activities || [],
-        },
-      };
       safeSend('llm-analysis-response', {
         id: payload?.id,
         type: 'analysis-response',
-        results: normalized,
+        results: {
+          summary: parsed.summary || result?.text || '',
+          suggestions: {
+            actionItems: parsed.actionItems || parsed.next_best_actions || [],
+            questions: parsed.questions || parsed.discovery_questions || [],
+            topics: parsed.topics || [],
+            activities: parsed.activities || [],
+          },
+        },
         raw: result,
         timeRange: payload?.timeRange,
       });
@@ -203,7 +716,7 @@ function registerIpc() {
       ensureHostedConfigured();
       audioTranscriber.start({
         sampleRate: Number(opts?.sampleRate || opts?.sample_rate || 16000),
-        flushIntervalMs: Number(opts?.updateMs || 3200),
+        flushIntervalMs: Number(opts?.updateMs || 2600),
       });
     } catch (err) {
       safeSend('asr-message', { op: 'error', message: String(err?.message || err) });
@@ -282,38 +795,22 @@ function registerIpc() {
     }
   });
 
-  ipcMain.handle('sessions-list', async () => {
-    return {
-      success: false,
-      error: 'Session listing is managed by backend APIs and is not exposed in this desktop build.',
-      sessions: [],
-    };
-  });
+  ipcMain.handle('sessions-list', async () => ({
+    success: false,
+    error: 'Session listing is managed by backend APIs and is not exposed in this desktop build.',
+    sessions: [],
+  }));
 
-  ipcMain.handle('sessions-search', async () => {
-    return {
-      success: false,
-      error: 'Session search is not available in hosted-only desktop mode.',
-      results: [],
-    };
-  });
-}
-
-function cleanup() {
-  try {
-    globalShortcut.unregisterAll();
-  } catch (_) {}
-
-  try {
-    if (audioTranscriber) {
-      audioTranscriber.stop();
-    }
-  } catch (_) {}
+  ipcMain.handle('sessions-search', async () => ({
+    success: false,
+    error: 'Session search is not available in hosted-only desktop mode.',
+    results: [],
+  }));
 }
 
 function bootstrap() {
   createHostedRuntime();
-  createWindow();
+  createBarWindow();
   registerShortcuts();
   registerIpc();
 }
@@ -321,25 +818,19 @@ function bootstrap() {
 app.whenReady().then(() => {
   try {
     const userData = app.getPath('userData');
-    if (!fs.existsSync(userData)) {
-      fs.mkdirSync(userData, { recursive: true });
-    }
+    if (!fs.existsSync(userData)) fs.mkdirSync(userData, { recursive: true });
   } catch (_) {}
 
   bootstrap();
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      bootstrap();
-    }
+    if (BrowserWindow.getAllWindows().length === 0) bootstrap();
   });
 });
 
 app.on('window-all-closed', () => {
   cleanup();
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
+  if (process.platform !== 'darwin') app.quit();
 });
 
 app.on('before-quit', () => {

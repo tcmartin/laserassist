@@ -3,6 +3,7 @@ const path = require('path');
 
 const DEFAULT_HOSTED_CONFIG = Object.freeze({
   backendUrl: 'http://localhost:8788',
+  frontendUrl: '',
   tenantId: '',
   jwtToken: '',
   analysisModel: 'gpt-5-mini',
@@ -18,6 +19,7 @@ function normalizeConfig(input = {}) {
 
   return {
     backendUrl: String(input.backendUrl || DEFAULT_HOSTED_CONFIG.backendUrl).trim().replace(/\/+$/, ''),
+    frontendUrl: String(input.frontendUrl || DEFAULT_HOSTED_CONFIG.frontendUrl).trim().replace(/\/+$/, ''),
     tenantId: String(input.tenantId || '').trim(),
     jwtToken: String(input.jwtToken || '').trim(),
     analysisModel: String(input.analysisModel || DEFAULT_HOSTED_CONFIG.analysisModel).trim() || DEFAULT_HOSTED_CONFIG.analysisModel,

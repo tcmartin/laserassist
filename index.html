@@ -1,896 +1,1000 @@
 <!doctype html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Laserreach Intelli</title>
-  <link rel="icon" href="assets/laserreach-logo.png" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Laserreach Intelli Overlay</title>
   <style>
     :root {
-      --bg: #05070d;
-      --panel: #0f1320;
-      --panel-2: #151b2b;
-      --text: #f1f5ff;
-      --muted: #9aa8c7;
-      --blue: #4a88ff;
-      --green: #2ed19a;
-      --line: rgba(147, 173, 227, 0.22);
-      --shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+      --bg: rgba(8, 10, 14, 0.72);
+      --bg-strong: rgba(14, 18, 27, 0.94);
+      --line: rgba(124, 163, 255, 0.45);
+      --text: #edf3ff;
+      --muted: #9fb0d0;
+      --ok: #50d37a;
+      --warn: #ffc654;
+      --blue: #5f98ff;
+      --danger: #ff6e6e;
     }
 
     * { box-sizing: border-box; }
-    body {
+
+    html, body {
       margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
       color: var(--text);
-      font-family: "Manrope", "Avenir Next", "Segoe UI", sans-serif;
-      background: radial-gradient(circle at 0% 0%, rgba(76, 131, 255, 0.12), transparent 45%), var(--bg);
-      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: transparent;
     }
 
-    #app {
-      position: fixed;
-      inset: 14px;
-      border-radius: 18px;
-      background: linear-gradient(145deg, rgba(11, 15, 24, 0.98), rgba(9, 12, 20, 0.98));
+    .bar-shell {
+      margin: 10px;
+      border-radius: 16px;
       border: 1px solid var(--line);
-      box-shadow: var(--shadow);
-      display: grid;
-      grid-template-rows: auto 1fr auto;
+      background: linear-gradient(170deg, rgba(19, 24, 37, 0.86), rgba(6, 7, 11, 0.78));
+      box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
       overflow: hidden;
     }
 
-    .header {
-      display: grid;
-      grid-template-columns: 1fr auto;
-      align-items: center;
-      gap: 12px;
-      padding: 14px 16px;
-      border-bottom: 1px solid var(--line);
-      background: linear-gradient(180deg, rgba(20, 27, 42, 0.96), rgba(14, 20, 32, 0.92));
-      -webkit-app-region: drag;
-    }
-
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      min-width: 0;
-    }
-
-    .brand img {
-      width: 34px;
-      height: 34px;
-      border-radius: 9px;
-      border: 1px solid rgba(134, 170, 255, 0.4);
-      background: #101a2a;
-    }
-
-    .brand-title { font-size: 17px; font-weight: 700; letter-spacing: 0.01em; }
-    .brand-subtitle { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-    .controls {
-      display: flex;
-      gap: 8px;
-      -webkit-app-region: no-drag;
-      flex-wrap: wrap;
-      justify-content: flex-end;
-    }
-
-    .btn {
-      border: 1px solid var(--line);
-      background: linear-gradient(180deg, #2d3c5d, #1f2d4a);
-      color: var(--text);
-      border-radius: 999px;
-      padding: 8px 14px;
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: 120ms ease;
-      white-space: nowrap;
-    }
-
-    .btn:hover { transform: translateY(-1px); }
-    .btn.primary { background: linear-gradient(180deg, #5294ff, #2e74eb); }
-    .btn.success { background: linear-gradient(180deg, #29c98e, #16a872); }
-    .btn.warn { background: linear-gradient(180deg, #f8aa52, #dc7f1f); }
-
-    .main {
-      display: grid;
-      grid-template-columns: minmax(340px, 1.15fr) minmax(260px, 0.85fr);
-      min-height: 0;
-      overflow: hidden;
-    }
-
-    .timeline-panel,
-    .bubble-panel {
-      min-height: 0;
-      display: grid;
-      grid-template-rows: auto 1fr;
-      overflow: hidden;
-    }
-
-    .timeline-panel {
-      border-right: 1px solid var(--line);
-      background: linear-gradient(180deg, rgba(17, 25, 40, 0.55), rgba(10, 15, 24, 0.4));
-    }
-
-    .panel-head {
+    .bar {
+      height: 52px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 12px 14px;
-      border-bottom: 1px solid var(--line);
+      padding: 8px 10px;
       gap: 8px;
     }
 
-    .panel-title { font-size: 13px; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; color: #c8d8fb; }
-    .panel-meta { font-size: 12px; color: var(--muted); }
+    .drag-zone {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 280px;
+      flex: 1;
+      -webkit-app-region: drag;
+    }
 
-    .timeline {
-      padding: 14px;
+    .logo {
+      width: 30px;
+      height: 30px;
+      border-radius: 8px;
+      object-fit: cover;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .headline {
       display: flex;
       flex-direction: column;
-      gap: 10px;
-      overflow-y: auto;
-      -webkit-app-region: no-drag;
+      gap: 2px;
+      min-width: 0;
     }
 
-    .bubble {
-      max-width: 92%;
-      border-radius: 14px;
-      padding: 11px 12px;
-      border: 1px solid var(--line);
-      white-space: pre-wrap;
-      line-height: 1.35;
-      font-size: 13px;
-      word-break: break-word;
-    }
-
-    .bubble.user {
-      align-self: flex-end;
-      background: linear-gradient(180deg, rgba(68, 120, 236, 0.45), rgba(44, 88, 186, 0.45));
-    }
-
-    .bubble.ai {
-      align-self: flex-start;
-      background: linear-gradient(180deg, rgba(34, 182, 130, 0.25), rgba(21, 123, 88, 0.25));
-    }
-
-    .bubble.sys {
-      align-self: center;
-      background: linear-gradient(180deg, rgba(64, 78, 105, 0.4), rgba(44, 56, 81, 0.4));
-      color: #d6e3ff;
-      font-size: 12px;
-    }
-
-    .bubble small {
-      display: block;
-      margin-top: 6px;
-      color: #b9c9eb;
-      font-size: 11px;
-    }
-
-    .bubble-panel {
-      background: linear-gradient(180deg, rgba(12, 18, 30, 0.65), rgba(8, 13, 24, 0.55));
-    }
-
-    .bubble-grid {
-      overflow-y: auto;
-      padding: 14px;
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 10px;
-      -webkit-app-region: no-drag;
-    }
-
-    .insight-card {
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      padding: 12px;
-      background: linear-gradient(160deg, rgba(29, 36, 54, 0.84), rgba(19, 26, 42, 0.84));
-      display: grid;
-      gap: 8px;
-    }
-
-    .insight-title {
+    .headline-title {
       font-size: 12px;
       font-weight: 700;
-      color: #d3def9;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
+      letter-spacing: 0.2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 360px;
     }
 
-    .insight-body {
-      font-size: 13px;
-      line-height: 1.4;
-      color: #f4f8ff;
-      white-space: pre-wrap;
-    }
-
-    .insight-tags {
-      display: flex;
-      gap: 6px;
-      flex-wrap: wrap;
-    }
-
-    .tag {
+    .headline-sub {
       font-size: 11px;
-      border-radius: 999px;
-      padding: 3px 8px;
-      border: 1px solid rgba(154, 184, 238, 0.35);
-      color: #b8cdf1;
-      background: rgba(32, 45, 72, 0.55);
-    }
-
-    .footer {
-      border-top: 1px solid var(--line);
-      padding: 12px 14px;
-      display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 8px;
-      align-items: center;
-      -webkit-app-region: no-drag;
-      background: rgba(11, 16, 28, 0.94);
-    }
-
-    .prompt {
-      width: 100%;
-      border-radius: 12px;
-      border: 1px solid var(--line);
-      background: #0f1728;
-      color: var(--text);
-      padding: 10px 12px;
-      font-size: 13px;
-      outline: none;
-    }
-
-    .status {
       color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 420px;
+    }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      -webkit-app-region: no-drag;
+    }
+
+    .btn {
+      border: 1px solid rgba(131, 159, 228, 0.45);
+      background: rgba(47, 63, 98, 0.35);
+      color: var(--text);
+      border-radius: 9px;
+      height: 34px;
+      padding: 0 10px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: border-color 0.14s ease, background 0.14s ease;
+    }
+
+    .btn:hover { border-color: rgba(151, 184, 255, 0.7); background: rgba(66, 90, 140, 0.5); }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn.primary { background: rgba(70, 117, 218, 0.66); }
+    .btn.ok { background: rgba(52, 138, 86, 0.66); border-color: rgba(111, 227, 157, 0.55); }
+    .btn.warn { background: rgba(137, 107, 43, 0.6); border-color: rgba(255, 197, 81, 0.5); }
+    .btn.danger { background: rgba(132, 51, 51, 0.56); border-color: rgba(255, 120, 120, 0.5); }
+
+    .icon-btn {
+      width: 32px;
+      min-width: 32px;
+      padding: 0;
+      text-align: center;
+      font-weight: 700;
+    }
+
+    .dock {
+      display: none;
+      border-top: 1px solid rgba(122, 161, 255, 0.28);
+      background: var(--bg-strong);
+      padding: 8px;
+      gap: 8px;
+    }
+
+    .dock.visible { display: flex; align-items: center; }
+
+    .input {
+      flex: 1;
+      height: 34px;
+      border-radius: 8px;
+      border: 1px solid rgba(124, 163, 255, 0.45);
+      background: rgba(13, 16, 24, 0.95);
+      color: var(--text);
+      padding: 0 10px;
+      outline: none;
       font-size: 12px;
     }
 
-    .reminder-strip {
+    .input::placeholder { color: #7f94bf; }
+
+    select.input {
+      appearance: none;
+      -webkit-appearance: none;
+      -moz-appearance: none;
+    }
+
+    .status-pill {
+      border-radius: 999px;
+      padding: 4px 8px;
+      font-size: 11px;
+      color: #dce9ff;
+      background: rgba(69, 94, 146, 0.5);
+      border: 1px solid rgba(137, 166, 236, 0.5);
+      max-width: 210px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .toast {
+      position: fixed;
+      left: 16px;
+      right: 16px;
+      bottom: 16px;
+      border-radius: 10px;
+      background: rgba(13, 18, 31, 0.96);
+      border: 1px solid rgba(121, 152, 214, 0.45);
+      padding: 10px 12px;
+      font-size: 12px;
+      display: none;
+      z-index: 30;
+    }
+
+    .toast.show { display: block; }
+    .toast.error { border-color: rgba(255, 130, 130, 0.55); color: #ffd1d1; }
+
+    .settings {
+      position: fixed;
+      right: 16px;
+      top: 66px;
+      width: 360px;
+      max-width: calc(100% - 28px);
+      border-radius: 12px;
+      border: 1px solid rgba(129, 162, 236, 0.45);
+      background: rgba(11, 15, 24, 0.97);
+      box-shadow: 0 20px 44px rgba(0,0,0,0.48);
+      display: none;
+      z-index: 22;
+      overflow: hidden;
+    }
+
+    .settings.show { display: block; }
+
+    .settings-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 12px;
+      border-bottom: 1px solid rgba(122, 156, 222, 0.3);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .settings-body {
+      padding: 10px 12px 12px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .label {
+      display: block;
+      font-size: 11px;
+      color: #9db1d6;
+      margin-bottom: 4px;
+    }
+
+    .row {
       display: flex;
       gap: 8px;
-      overflow-x: auto;
-      padding: 0 14px 10px 14px;
-      border-bottom: 1px solid var(--line);
-      -webkit-app-region: no-drag;
-      background: rgba(12, 18, 30, 0.75);
-    }
-
-    .reminder-card {
-      min-width: 220px;
-      border-radius: 12px;
-      border: 1px solid rgba(97, 166, 255, 0.4);
-      padding: 10px;
-      background: linear-gradient(180deg, rgba(40, 72, 126, 0.35), rgba(23, 44, 81, 0.35));
-      font-size: 12px;
-      line-height: 1.35;
-    }
-
-    .reminder-card strong { display: block; font-size: 12px; margin-bottom: 4px; }
-
-    .modal {
-      position: fixed;
-      inset: 0;
-      background: rgba(6, 8, 14, 0.72);
-      display: none;
       align-items: center;
-      justify-content: center;
-      z-index: 99;
-      -webkit-app-region: no-drag;
     }
 
-    .modal.show { display: flex; }
-
-    .modal-card {
-      width: min(720px, 90vw);
-      max-height: 86vh;
-      overflow: auto;
-      border-radius: 16px;
-      border: 1px solid var(--line);
-      background: linear-gradient(180deg, #121a2c, #0d1322);
-      box-shadow: var(--shadow);
-      padding: 16px;
-      display: grid;
-      gap: 12px;
+    .small {
+      font-size: 11px;
+      color: #9eb1d3;
     }
 
-    .form-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 10px;
-    }
-
-    .field { display: grid; gap: 6px; }
-
-    .field label {
-      font-size: 12px;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: 0.03em;
-    }
-
-    .field input, .field select {
-      border-radius: 10px;
-      border: 1px solid var(--line);
-      background: #0f1728;
-      color: var(--text);
-      padding: 10px;
-      font-size: 13px;
-      outline: none;
-    }
-
-    .full { grid-column: 1 / -1; }
-
-    .empty {
-      border: 1px dashed rgba(146, 171, 221, 0.4);
-      border-radius: 12px;
-      padding: 14px;
-      text-align: center;
-      color: var(--muted);
-      font-size: 13px;
-    }
-
-    @media (max-width: 1080px) {
-      .main { grid-template-columns: 1fr; }
-      .timeline-panel { border-right: none; border-bottom: 1px solid var(--line); }
-      .form-grid { grid-template-columns: 1fr; }
-      .footer { grid-template-columns: 1fr; }
+    .meeting-alert {
+      color: #ffe8af;
+      border-color: rgba(255, 201, 89, 0.6);
+      background: rgba(122, 86, 23, 0.58);
     }
   </style>
 </head>
 <body>
-  <div id="app">
-    <div class="header">
-      <div class="brand">
-        <img src="assets/laserreach-logo.png" alt="Laserreach" />
-        <div>
-          <div class="brand-title">Laserreach Intelli</div>
-          <div id="brandSub" class="brand-subtitle">Hosted in-call intelligence · Deepgram + GPT-5-mini</div>
+  <div class="bar-shell">
+    <div class="bar">
+      <div class="drag-zone">
+        <img src="assets/laserreach-logo.png" alt="Laserreach" class="logo" />
+        <div class="headline">
+          <div id="headlineTitle" class="headline-title">Laserreach Intelli</div>
+          <div id="headlineSub" class="headline-sub">Sign in to start live call intelligence.</div>
         </div>
       </div>
+
       <div class="controls">
-        <button id="btnStart" class="btn success">Start Listening</button>
-        <button id="btnStop" class="btn warn" disabled>Stop</button>
-        <button id="btnSummary" class="btn">Summarize</button>
-        <button id="btnActions" class="btn">Next Actions</button>
-        <button id="btnSettings" class="btn primary">Settings</button>
+        <span id="meetingPill" class="status-pill">No meeting soon</span>
+        <button id="signinBtn" class="btn primary">Sign In</button>
+        <button id="listenBtn" class="btn" disabled>Start</button>
+        <button id="summaryBtn" class="btn" disabled>Summary</button>
+        <button id="meetingBtn" class="btn" disabled>Meeting</button>
+        <button id="transcriptBtn" class="btn" disabled>Transcript</button>
+        <button id="askBtn" class="btn">Ask</button>
+        <button id="settingsBtn" class="btn icon-btn">⚙</button>
+        <button id="pinBtn" class="btn icon-btn">📌</button>
+        <button id="minBtn" class="btn icon-btn">−</button>
+        <button id="closeBtn" class="btn icon-btn">×</button>
       </div>
     </div>
 
-    <div id="reminderStrip" class="reminder-strip"></div>
-
-    <div class="main">
-      <section class="timeline-panel">
-        <div class="panel-head">
-          <div class="panel-title">Conversation Timeline</div>
-          <div id="sessionMeta" class="panel-meta">No active session</div>
-        </div>
-        <div id="timeline" class="timeline"></div>
-      </section>
-
-      <section class="bubble-panel">
-        <div class="panel-head">
-          <div class="panel-title">Insight Bubbles</div>
-          <div id="insightMeta" class="panel-meta">0 generated</div>
-        </div>
-        <div id="bubbleGrid" class="bubble-grid"></div>
-      </section>
-    </div>
-
-    <div class="footer">
-      <input id="prompt" class="prompt" placeholder="Ask Intelli something about this call..." />
-      <div id="status" class="status">Ready.</div>
+    <div id="promptDock" class="dock">
+      <input id="promptInput" class="input" placeholder="Ask for call coaching, objection handling, or next-best action..." />
+      <button id="sendPromptBtn" class="btn primary">Analyze</button>
     </div>
   </div>
 
-  <div id="settingsModal" class="modal">
-    <div class="modal-card">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
-        <div class="panel-title" style="font-size:15px;">Hosted Backend Settings</div>
-        <button id="btnCloseSettings" class="btn">Close</button>
+  <div id="settingsPanel" class="settings">
+    <div class="settings-header">
+      <span>Hosted Settings</span>
+      <button id="settingsCloseBtn" class="btn icon-btn">×</button>
+    </div>
+    <div class="settings-body">
+      <div>
+        <label class="label" for="backendInput">Backend URL</label>
+        <input id="backendInput" class="input" placeholder="http://localhost:8788" />
       </div>
-      <div class="form-grid">
-        <div class="field full">
-          <label for="cfgBackendUrl">Backend URL</label>
-          <input id="cfgBackendUrl" type="text" placeholder="http://localhost:8788" />
+      <div>
+        <label class="label" for="frontendInput">Frontend URL (optional)</label>
+        <input id="frontendInput" class="input" placeholder="http://localhost:3100" />
+      </div>
+      <div>
+        <label class="label" for="tenantSelect">Workspace</label>
+        <div class="row">
+          <select id="tenantSelect" class="input"></select>
+          <button id="refreshOrgsBtn" class="btn">Refresh</button>
         </div>
-        <div class="field">
-          <label for="cfgTenant">Tenant ID</label>
-          <input id="cfgTenant" type="text" placeholder="orgl" />
+        <div class="small">Choose your org workspace. If empty, set Org ID manually below.</div>
+      </div>
+      <div>
+        <label class="label" for="tenantInput">Org ID (optional override)</label>
+        <input id="tenantInput" class="input" placeholder="orgl" />
+      </div>
+      <div class="row">
+        <div style="flex:1">
+          <label class="label" for="modelInput">Model</label>
+          <input id="modelInput" class="input" value="gpt-5-mini" />
         </div>
-        <div class="field">
-          <label for="cfgModel">Analysis Model</label>
-          <select id="cfgModel">
-            <option value="gpt-5-mini">gpt-5-mini</option>
-            <option value="gpt-5-nano">gpt-5-nano</option>
-          </select>
-        </div>
-        <div class="field full">
-          <label for="cfgJwt">JWT Token</label>
-          <input id="cfgJwt" type="password" placeholder="Paste auth token" />
-        </div>
-        <div class="field">
-          <label for="cfgLookahead">Reminder Lookahead (minutes)</label>
-          <input id="cfgLookahead" type="number" min="5" max="240" step="5" value="30" />
-        </div>
-        <div class="field">
-          <label for="cfgPipeline">Default Pipeline ID (optional)</label>
-          <input id="cfgPipeline" type="text" placeholder="pipeline UUID" />
+        <div style="width:120px">
+          <label class="label" for="lookaheadInput">Lookahead (min)</label>
+          <input id="lookaheadInput" class="input" value="30" />
         </div>
       </div>
-      <div style="display:flex;justify-content:flex-end;gap:8px;">
-        <button id="btnSaveSettings" class="btn primary">Save Settings</button>
+      <div class="small" id="authSummary">Not signed in.</div>
+      <div class="row">
+        <button id="saveSettingsBtn" class="btn primary">Save</button>
+        <button id="reauthBtn" class="btn">Sign In</button>
+        <button id="signoutBtn" class="btn danger">Sign Out</button>
       </div>
     </div>
   </div>
+
+  <div id="toast" class="toast"></div>
 
   <script>
     const API = window.electronAPI || {
-      async getHostedConfig() {
-        return {
-          success: true,
-          config: {
-            backendUrl: 'http://localhost:8788',
-            tenantId: 'orgl',
-            jwtToken: 'browser-test-token',
-            analysisModel: 'gpt-5-mini',
-            lookaheadMinutes: 30,
-            defaultPipelineId: '',
-          },
-        };
-      },
-      async setHostedConfig(config) { return { success: true, config }; },
-      async getHostedReminders() {
-        return {
-          success: true,
-          reminders: [
-            {
-              event_id: 'evt_browser_1',
-              pipeline_id: 'pipe_browser_1',
-              person_name: 'Browser Prospect',
-              company_name: 'Mock Company',
-              scheduled_at: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
-            },
-          ],
-          count: 1,
-        };
-      },
-      sendPrompt(id, prompt) {
-        setTimeout(() => {
-          this._responseHandlers.forEach((fn) => fn({ id, response: `Mock response for: ${prompt}` }));
-        }, 50);
-      },
-      sendAnalysisRequest(req) {
-        setTimeout(() => {
-          this._analysisHandlers.forEach((fn) => fn({ data: {
-            id: req?.id,
-            type: 'analysis-response',
-            results: {
-              summary: 'Mock analysis summary from browser fallback.',
-              suggestions: {
-                actionItems: ['Mock action 1', 'Mock action 2'],
-                questions: ['Mock question'],
-                topics: [],
-                activities: [],
-              },
-            },
-          }}));
-        }, 80);
-      },
-      onResponse(fn) { this._responseHandlers.push(fn); },
-      onAnalysisResponse(fn) { this._analysisHandlers.push(fn); },
-      onASRMessage(fn) { this._asrHandlers.push(fn); },
-      onModelStatus() {},
-      onStatus() {},
-      asrStart() {},
-      asrSendChunkF32() {},
-      asrStop() {},
-      sessionStart() {},
-      sessionAppendTranscript() {},
-      sessionAppendAnalysis() {},
-      sessionEnd() {},
-      _responseHandlers: [],
-      _analysisHandlers: [],
-      _asrHandlers: [],
+      getHostedConfig: async () => ({ success: true, config: { backendUrl: 'http://localhost:8788', frontendUrl: 'http://localhost:3100', tenantId: '', jwtToken: '', analysisModel: 'gpt-5-mini', lookaheadMinutes: 30 } }),
+      setHostedConfig: async (config) => ({ success: true, config }),
+      getHostedReminders: async () => ({ success: true, reminders: [], count: 0 }),
+      authOpenLogin: async () => ({ success: false, error: 'Electron API unavailable' }),
+      authLoginPassword: async () => ({ success: false, error: 'Electron API unavailable' }),
+      authSignOut: async () => ({ success: true }),
+      authStatus: async () => ({ success: true, authenticated: false }),
+      authListOrgs: async () => ({ success: true, orgs: [] }),
+      authOpenExternal: async () => ({ success: true }),
+      onAuthUpdated: () => {},
+      openOverlayPanel: async () => ({ success: true }),
+      closeOverlayPanel: async () => ({ success: true }),
+      listOverlayPanels: async () => ({ success: true, keys: [] }),
+      windowMinimize: async () => ({ success: true }),
+      windowClose: async () => ({ success: true }),
+      windowTogglePin: async () => ({ success: true, pinned: true }),
+      sendPrompt: () => {},
+      onResponse: () => {},
+      sendAnalysisRequest: () => {},
+      onAnalysisResponse: () => {},
+      onStatus: () => {},
+      onModelStatus: () => {},
+      asrStart: () => {},
+      asrSendChunkF32: () => {},
+      asrStop: () => {},
+      onASRMessage: () => {},
+      sessionStart: () => {},
+      sessionAppendTranscript: () => {},
+      sessionAppendAnalysis: () => {},
+      sessionEnd: () => {},
+      getSession: async () => ({ success: false }),
+      listSessions: async () => ({ success: false }),
+      searchSessions: async () => ({ success: false }),
     };
 
     const state = {
       config: null,
-      transcript: '',
+      auth: null,
       listening: false,
-      sessionId: null,
-      sessionStartedAt: null,
-      insightCount: 0,
-      media: {
-        stream: null,
-        context: null,
-        source: null,
-        processor: null,
-      },
+      transcript: '',
+      transcriptSegments: [],
+      pendingAnalysis: new Map(),
+      pendingPrompt: new Map(),
+      mediaStream: null,
+      audioCtx: null,
+      sourceNode: null,
+      processor: null,
+      activeReminder: null,
+      reminderTimer: null,
+      lastReminderAlertId: '',
+      pinned: true,
+      orgs: [],
     };
 
-    const timelineEl = document.getElementById('timeline');
-    const bubbleGridEl = document.getElementById('bubbleGrid');
-    const reminderStripEl = document.getElementById('reminderStrip');
-    const statusEl = document.getElementById('status');
-    const sessionMetaEl = document.getElementById('sessionMeta');
-    const insightMetaEl = document.getElementById('insightMeta');
-    const promptEl = document.getElementById('prompt');
-    const brandSubEl = document.getElementById('brandSub');
+    const els = {
+      headlineTitle: document.getElementById('headlineTitle'),
+      headlineSub: document.getElementById('headlineSub'),
+      meetingPill: document.getElementById('meetingPill'),
+      signinBtn: document.getElementById('signinBtn'),
+      listenBtn: document.getElementById('listenBtn'),
+      summaryBtn: document.getElementById('summaryBtn'),
+      meetingBtn: document.getElementById('meetingBtn'),
+      transcriptBtn: document.getElementById('transcriptBtn'),
+      askBtn: document.getElementById('askBtn'),
+      settingsBtn: document.getElementById('settingsBtn'),
+      pinBtn: document.getElementById('pinBtn'),
+      minBtn: document.getElementById('minBtn'),
+      closeBtn: document.getElementById('closeBtn'),
+      promptDock: document.getElementById('promptDock'),
+      promptInput: document.getElementById('promptInput'),
+      sendPromptBtn: document.getElementById('sendPromptBtn'),
+      settingsPanel: document.getElementById('settingsPanel'),
+      settingsCloseBtn: document.getElementById('settingsCloseBtn'),
+      backendInput: document.getElementById('backendInput'),
+      frontendInput: document.getElementById('frontendInput'),
+      tenantSelect: document.getElementById('tenantSelect'),
+      refreshOrgsBtn: document.getElementById('refreshOrgsBtn'),
+      tenantInput: document.getElementById('tenantInput'),
+      modelInput: document.getElementById('modelInput'),
+      lookaheadInput: document.getElementById('lookaheadInput'),
+      authSummary: document.getElementById('authSummary'),
+      saveSettingsBtn: document.getElementById('saveSettingsBtn'),
+      reauthBtn: document.getElementById('reauthBtn'),
+      signoutBtn: document.getElementById('signoutBtn'),
+      toast: document.getElementById('toast'),
+    };
 
-    function setStatus(text) {
-      statusEl.textContent = text;
+    function nowIso() {
+      return new Date().toISOString();
     }
 
-    function nowLabel() {
-      return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    function showToast(message, type = 'info', timeoutMs = 2800) {
+      els.toast.textContent = String(message || '');
+      els.toast.className = `toast show${type === 'error' ? ' error' : ''}`;
+      window.clearTimeout(showToast.timer);
+      showToast.timer = window.setTimeout(() => {
+        els.toast.className = 'toast';
+      }, timeoutMs);
     }
 
-    function appendTimeline(text, kind = 'sys') {
-      const item = document.createElement('div');
-      item.className = `bubble ${kind}`;
-      item.textContent = text;
-      const stamp = document.createElement('small');
-      stamp.textContent = nowLabel();
-      item.appendChild(stamp);
-      timelineEl.appendChild(item);
-      timelineEl.scrollTop = timelineEl.scrollHeight;
+    function parseDate(value) {
+      if (!value) return null;
+      const d = new Date(value);
+      return Number.isNaN(d.getTime()) ? null : d;
     }
 
-    function addInsightCard(title, body, tags = []) {
-      const card = document.createElement('div');
-      card.className = 'insight-card';
-      card.innerHTML = `<div class="insight-title"></div><div class="insight-body"></div><div class="insight-tags"></div>`;
-      card.querySelector('.insight-title').textContent = title;
-      card.querySelector('.insight-body').textContent = body;
-      const tagsEl = card.querySelector('.insight-tags');
-      for (const tag of tags) {
-        const chip = document.createElement('span');
-        chip.className = 'tag';
-        chip.textContent = tag;
-        tagsEl.appendChild(chip);
+    function formatRelativeMinutes(target) {
+      const dt = parseDate(target);
+      if (!dt) return '';
+      const mins = Math.round((dt.getTime() - Date.now()) / 60000);
+      if (mins < 0) return `${Math.abs(mins)}m ago`;
+      if (mins < 1) return 'now';
+      return `in ${mins}m`;
+    }
+
+    function hasAuth() {
+      return Boolean(state.config && state.config.jwtToken && state.config.tenantId && state.config.backendUrl);
+    }
+
+    function renderOrgOptions() {
+      const select = els.tenantSelect;
+      if (!select) return;
+      const current = String(state.config?.tenantId || '').trim();
+      select.innerHTML = '';
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = state.orgs.length ? 'Select workspace...' : 'No workspaces loaded';
+      select.appendChild(placeholder);
+      for (const org of state.orgs) {
+        const option = document.createElement('option');
+        option.value = org.org_id;
+        option.textContent = org.name ? `${org.name} (${org.org_id})` : org.org_id;
+        select.appendChild(option);
       }
-      bubbleGridEl.prepend(card);
-      state.insightCount += 1;
-      insightMetaEl.textContent = `${state.insightCount} generated`;
+      if (current) {
+        select.value = current;
+      }
     }
 
-    function renderReminders(reminders) {
-      reminderStripEl.innerHTML = '';
-      if (!Array.isArray(reminders) || reminders.length === 0) {
-        const empty = document.createElement('div');
-        empty.className = 'empty';
-        empty.style.minWidth = '100%';
-        empty.textContent = 'No upcoming meetings in the configured lookahead window.';
-        reminderStripEl.appendChild(empty);
+    async function refreshOrgOptions() {
+      if (!state.auth?.authenticated) {
+        state.orgs = [];
+        renderOrgOptions();
         return;
       }
+      const out = await API.authListOrgs();
+      if (!out?.success) {
+        state.orgs = [];
+        renderOrgOptions();
+        return;
+      }
+      state.orgs = Array.isArray(out.orgs) ? out.orgs : [];
+      renderOrgOptions();
+      if (!state.config?.tenantId && state.orgs.length === 1) {
+        els.tenantSelect.value = state.orgs[0].org_id;
+      }
+    }
 
-      reminders.slice(0, 8).forEach((r) => {
-        const card = document.createElement('div');
-        card.className = 'reminder-card';
-        const who = r.person_name || r.person_email || 'Unknown person';
-        const company = r.company_name || 'Unknown company';
-        const when = r.scheduled_at ? new Date(r.scheduled_at).toLocaleString() : 'unscheduled';
-        card.innerHTML = `<strong>${who}</strong>${company}<br>${when}<br>Pipeline: ${r.pipeline_id || 'n/a'}`;
-        reminderStripEl.appendChild(card);
+    function updateButtons() {
+      const ready = hasAuth();
+      els.listenBtn.disabled = !ready;
+      els.summaryBtn.disabled = !ready;
+      els.meetingBtn.disabled = !ready;
+      els.transcriptBtn.disabled = !ready;
+      els.signinBtn.textContent = ready ? 'Signed In' : 'Sign In';
+      els.signinBtn.classList.toggle('ok', ready);
+      els.listenBtn.classList.toggle('ok', state.listening);
+      els.listenBtn.textContent = state.listening ? 'Stop' : 'Start';
+      els.pinBtn.textContent = state.pinned ? '📌' : '📍';
+    }
+
+    function updateAuthSummary() {
+      if (!state.auth || !state.auth.authenticated) {
+        els.authSummary.textContent = 'Not signed in.';
+        return;
+      }
+      const user = state.auth.user || {};
+      const id = user.username || user.email || 'signed-in user';
+      els.authSummary.textContent = `Signed in as ${id}${state.config?.tenantId ? ` • org ${state.config.tenantId}` : ''}`;
+    }
+
+    function updateMeetingHeadline() {
+      if (!state.activeReminder) {
+        els.meetingPill.className = 'status-pill';
+        els.meetingPill.textContent = 'No meeting soon';
+        return;
+      }
+      const r = state.activeReminder;
+      const when = formatRelativeMinutes(r.scheduled_at || r.next_run_at || '');
+      const person = r.person_name || r.person_email || 'meeting contact';
+      els.meetingPill.textContent = `${person} ${when ? `(${when})` : ''}`;
+      const minutes = Number(r.in_minutes || NaN);
+      if (Number.isFinite(minutes) && minutes >= 0 && minutes <= 10) {
+        els.meetingPill.className = 'status-pill meeting-alert';
+      } else {
+        els.meetingPill.className = 'status-pill';
+      }
+    }
+
+    function setHeadline(title, subtitle) {
+      if (title) els.headlineTitle.textContent = title;
+      if (subtitle) els.headlineSub.textContent = subtitle;
+    }
+
+    async function openPanel(payload) {
+      const res = await API.openOverlayPanel(payload || {});
+      if (!res || !res.success) throw new Error(res?.error || 'panel_open_failed');
+      return res;
+    }
+
+    async function openMeetingPanel() {
+      const r = state.activeReminder;
+      if (!r) {
+        showToast('No upcoming meeting detected.', 'error');
+        return;
+      }
+      const content = [
+        `Contact: ${r.person_name || r.person_email || 'Unknown'}`,
+        `Company: ${r.company_name || 'Unknown company'}`,
+        `When: ${r.scheduled_at || 'Unknown time'}`,
+        `Pipeline: ${r.pipeline_id || 'N/A'}`,
+        '',
+        r.message_preview || 'No message preview available.',
+      ].join('\n');
+
+      await openPanel({
+        key: `meeting_${r.event_id || r.pipeline_id || 'active'}`,
+        title: 'Meeting context',
+        subtitle: `${r.person_name || r.person_email || 'Contact'} • ${r.company_name || 'Account'}`,
+        content,
+        chips: [r.pipeline_status ? `status: ${r.pipeline_status}` : '', formatRelativeMinutes(r.scheduled_at || '')].filter(Boolean),
+        links: r.person_linkedin_url ? [{ label: 'LinkedIn profile', href: r.person_linkedin_url }] : [],
+        width: 470,
+        height: 320,
       });
     }
 
-    function updateSessionMeta() {
-      if (!state.sessionId) {
-        sessionMetaEl.textContent = 'No active session';
+    async function openTranscriptPanel() {
+      if (!state.transcript.trim()) {
+        showToast('No transcript yet. Start listening first.', 'error');
         return;
       }
-      sessionMetaEl.textContent = `Session ${state.sessionId.slice(-8)} · ${state.listening ? 'listening' : 'idle'}`;
+      await openPanel({
+        key: 'live_transcript',
+        title: 'Live transcript',
+        subtitle: 'Streaming notes for this call',
+        content: state.transcript,
+        width: 560,
+        height: 520,
+      });
     }
 
-    async function loadConfigToUI() {
-      const res = await API.getHostedConfig();
-      if (!res || !res.success) {
-        setStatus(`Config load failed: ${res?.error || 'unknown error'}`);
+    function compactText(v, n = 240) {
+      const s = String(v || '').trim();
+      if (s.length <= n) return s;
+      return `${s.slice(0, n - 1)}…`;
+    }
+
+    async function openAnalysisPanels(result) {
+      const parsed = result?.results || {};
+      const summary = compactText(parsed.summary || result?.raw?.text || 'No summary generated.', 900);
+      const suggestions = parsed.suggestions || {};
+      const actionItems = Array.isArray(suggestions.actionItems) ? suggestions.actionItems : [];
+      const questions = Array.isArray(suggestions.questions) ? suggestions.questions : [];
+      const topics = Array.isArray(suggestions.topics) ? suggestions.topics : [];
+
+      await openPanel({
+        key: `analysis_${Date.now()}`,
+        title: 'Call insight',
+        subtitle: state.activeReminder?.person_name || state.activeReminder?.person_email || 'Live call',
+        content: summary,
+        chips: ['summary', `segments: ${state.transcriptSegments.length}`],
+        width: 520,
+        height: 360,
+      });
+
+      if (actionItems.length) {
+        await openPanel({
+          key: `actions_${Date.now()}`,
+          title: 'Next best actions',
+          subtitle: 'Prioritized execution',
+          content: actionItems.map((a, i) => `${i + 1}. ${a}`).join('\n'),
+          chips: ['action plan'],
+          width: 430,
+          height: 300,
+        });
+      }
+
+      if (questions.length || topics.length) {
+        const body = [
+          questions.length ? `Questions:\n${questions.map((q, i) => `${i + 1}. ${q}`).join('\n')}` : '',
+          topics.length ? `\nTopics to push:\n${topics.map((t, i) => `${i + 1}. ${t}`).join('\n')}` : '',
+        ].join('\n').trim();
+        await openPanel({
+          key: `questions_${Date.now()}`,
+          title: 'Talk track support',
+          subtitle: 'Discovery + objection handling',
+          content: body,
+          chips: ['conversation support'],
+          width: 430,
+          height: 320,
+        });
+      }
+    }
+
+    async function runAnalysis(prompt, analysisType = 'full') {
+      if (!hasAuth()) {
+        showToast('Sign in and set tenant first.', 'error');
         return;
       }
-      state.config = res.config;
-      document.getElementById('cfgBackendUrl').value = state.config.backendUrl || 'http://localhost:8788';
-      document.getElementById('cfgTenant').value = state.config.tenantId || '';
-      document.getElementById('cfgJwt').value = state.config.jwtToken || '';
-      document.getElementById('cfgModel').value = state.config.analysisModel || 'gpt-5-mini';
-      document.getElementById('cfgLookahead').value = String(state.config.lookaheadMinutes || 30);
-      document.getElementById('cfgPipeline').value = state.config.defaultPipelineId || '';
-      brandSubEl.textContent = `Hosted via ${state.config.backendUrl || 'http://localhost:8788'} · ${state.config.analysisModel || 'gpt-5-mini'}`;
-    }
+      if (!state.transcript.trim()) {
+        showToast('Need transcript data before analysis.', 'error');
+        return;
+      }
 
-    function configFromUI() {
-      return {
-        backendUrl: (document.getElementById('cfgBackendUrl').value || '').trim() || 'http://localhost:8788',
-        tenantId: (document.getElementById('cfgTenant').value || '').trim(),
-        jwtToken: (document.getElementById('cfgJwt').value || '').trim(),
-        analysisModel: (document.getElementById('cfgModel').value || 'gpt-5-mini').trim(),
-        lookaheadMinutes: Number(document.getElementById('cfgLookahead').value || 30),
-        defaultPipelineId: (document.getElementById('cfgPipeline').value || '').trim(),
+      const id = `ana_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      const req = {
+        id,
+        prompt,
+        analysisType,
+        transcript: state.transcript,
+        model: state.config.analysisModel || 'gpt-5-mini',
+        max_completion_tokens: 14000,
+        pipeline_id: state.activeReminder?.pipeline_id || state.config.defaultPipelineId || undefined,
+        event_id: state.activeReminder?.event_id || undefined,
       };
-    }
 
-    function requireConfigured() {
-      const cfg = state.config || {};
-      const missing = [];
-      if (!cfg.backendUrl) missing.push('backendUrl');
-      if (!cfg.tenantId) missing.push('tenantId');
-      if (!cfg.jwtToken) missing.push('jwtToken');
-      if (missing.length) {
-        throw new Error(`Configure ${missing.join(', ')} in Settings`);
-      }
-      return cfg;
-    }
+      const out = await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          state.pendingAnalysis.delete(id);
+          reject(new Error('analysis_timeout'));
+        }, 90000);
+        state.pendingAnalysis.set(id, {
+          resolve: (v) => {
+            clearTimeout(timer);
+            resolve(v);
+          },
+          reject: (e) => {
+            clearTimeout(timer);
+            reject(e);
+          },
+        });
+        API.sendAnalysisRequest(req);
+      });
 
-    async function refreshReminders() {
-      try {
-        requireConfigured();
-        const res = await API.getHostedReminders();
-        if (!res.success) {
-          renderReminders([]);
-          setStatus(`Reminder error: ${res.error || 'unknown'}`);
-          return;
-        }
-        renderReminders(res.reminders || []);
-      } catch (err) {
-        renderReminders([]);
-      }
+      if (out.error) throw new Error(out.error);
+      return out;
     }
 
     async function startListening() {
       if (state.listening) return;
-      requireConfigured();
-
-      state.sessionId = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      state.sessionStartedAt = Date.now();
-
-      await API.sessionStart(state.sessionId, {
-        source: 'intelli_desktop',
-        started_at: new Date().toISOString(),
-      });
+      if (!hasAuth()) {
+        showToast('Sign in first.', 'error');
+        return;
+      }
 
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
+          channelCount: 1,
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
         },
       });
 
-      const context = new (window.AudioContext || window.webkitAudioContext)();
-      const source = context.createMediaStreamSource(stream);
-      const processor = context.createScriptProcessor(4096, 1, 1);
+      state.mediaStream = stream;
+      state.audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
+      state.sourceNode = state.audioCtx.createMediaStreamSource(stream);
+      state.processor = state.audioCtx.createScriptProcessor(4096, 1, 1);
 
-      processor.onaudioprocess = (event) => {
+      state.processor.onaudioprocess = (event) => {
         if (!state.listening) return;
-        const data = event.inputBuffer.getChannelData(0);
-        const copy = new Float32Array(data.length);
-        copy.set(data);
-        API.asrSendChunkF32(copy);
+        const chunk = event.inputBuffer.getChannelData(0).slice();
+        API.asrSendChunkF32(chunk.buffer);
       };
 
-      source.connect(processor);
-      processor.connect(context.destination);
+      state.sourceNode.connect(state.processor);
+      state.processor.connect(state.audioCtx.destination);
+      API.asrStart({ sampleRate: state.audioCtx.sampleRate, updateMs: 2600 });
 
-      state.media = { stream, context, source, processor };
-      state.listening = true;
-      document.getElementById('btnStart').disabled = true;
-      document.getElementById('btnStop').disabled = false;
-      updateSessionMeta();
-
-      API.asrStart({
-        sampleRate: context.sampleRate,
-        updateMs: 3200,
+      const sid = `sess_${Date.now()}`;
+      state.sessionId = sid;
+      API.sessionStart(sid, {
+        started_at: nowIso(),
+        pipeline_id: state.activeReminder?.pipeline_id || '',
+        event_id: state.activeReminder?.event_id || '',
       });
 
-      appendTimeline('Live listening started.', 'sys');
-      setStatus('Listening...');
+      state.listening = true;
+      setHeadline('Listening live', state.activeReminder ? `${state.activeReminder.person_name || state.activeReminder.person_email || 'Contact'} • ${state.activeReminder.company_name || 'Account'}` : 'Capturing live call audio');
+      updateButtons();
     }
 
     async function stopListening() {
       if (!state.listening) return;
-
       state.listening = false;
-      document.getElementById('btnStart').disabled = false;
-      document.getElementById('btnStop').disabled = true;
 
-      const { stream, context, source, processor } = state.media;
-      try { processor && processor.disconnect(); } catch (_) {}
-      try { source && source.disconnect(); } catch (_) {}
-      try { context && context.close(); } catch (_) {}
+      try { API.asrStop(); } catch (_) {}
+      try { state.processor && state.processor.disconnect(); } catch (_) {}
+      try { state.sourceNode && state.sourceNode.disconnect(); } catch (_) {}
+      try { state.audioCtx && state.audioCtx.close(); } catch (_) {}
       try {
-        if (stream) {
-          stream.getTracks().forEach((t) => t.stop());
+        if (state.mediaStream) {
+          state.mediaStream.getTracks().forEach((t) => t.stop());
         }
       } catch (_) {}
-      state.media = { stream: null, context: null, source: null, processor: null };
 
-      API.asrStop();
-      appendTimeline('Listening stopped.', 'sys');
-      setStatus('Stopped.');
+      state.processor = null;
+      state.sourceNode = null;
+      state.audioCtx = null;
+      state.mediaStream = null;
 
       if (state.sessionId) {
-        await API.sessionEnd(state.sessionId, {
-          ended_at: new Date().toISOString(),
-          transcript_chars: state.transcript.length,
+        API.sessionEnd(state.sessionId, {
+          ended_at: nowIso(),
+          transcript_len: state.transcript.length,
         });
       }
-      updateSessionMeta();
+
+      setHeadline('Laserreach Intelli', state.activeReminder ? `${state.activeReminder.person_name || state.activeReminder.person_email || 'Contact'} • ${state.activeReminder.company_name || 'Account'}` : 'Ready');
+      updateButtons();
     }
 
-    async function runAnalysis(kind) {
-      try {
-        requireConfigured();
-        const transcript = state.transcript.trim();
-        if (!transcript) {
-          setStatus('No transcript available yet.');
+    async function refreshConfigAndAuth() {
+      const cfgRes = await API.getHostedConfig();
+      if (!cfgRes?.success) throw new Error(cfgRes?.error || 'config_read_failed');
+      state.config = cfgRes.config || {};
+
+      els.backendInput.value = state.config.backendUrl || 'http://localhost:8788';
+      els.frontendInput.value = state.config.frontendUrl || '';
+      els.tenantInput.value = state.config.tenantId || '';
+      els.modelInput.value = state.config.analysisModel || 'gpt-5-mini';
+      els.lookaheadInput.value = String(state.config.lookaheadMinutes || 30);
+
+      const authRes = await API.authStatus();
+      state.auth = authRes || { authenticated: false };
+      updateAuthSummary();
+      updateButtons();
+      await refreshOrgOptions();
+
+      if (state.auth?.authenticated) {
+        const user = state.auth.user || {};
+        setHeadline('Laserreach Intelli', `${user.username || user.email || 'Signed in'}${state.config.tenantId ? ` • ${state.config.tenantId}` : ''}`);
+      } else {
+        setHeadline('Laserreach Intelli', 'Sign in to start live call intelligence.');
+      }
+    }
+
+    async function saveSettings() {
+      const chosenTenant =
+        els.tenantInput.value.trim() ||
+        els.tenantSelect.value.trim() ||
+        (state.config?.tenantId || '').trim();
+      const next = {
+        backendUrl: els.backendInput.value.trim(),
+        frontendUrl: els.frontendInput.value.trim(),
+        tenantId: chosenTenant,
+        analysisModel: els.modelInput.value.trim() || 'gpt-5-mini',
+        lookaheadMinutes: Number(els.lookaheadInput.value || 30),
+      };
+      const res = await API.setHostedConfig(next);
+      if (!res?.success) throw new Error(res?.error || 'save_failed');
+      state.config = res.config;
+      els.tenantInput.value = state.config.tenantId || '';
+      renderOrgOptions();
+      showToast('Settings saved.');
+      updateButtons();
+      await refreshReminders();
+    }
+
+    async function refreshReminders() {
+      if (!hasAuth()) {
+        state.activeReminder = null;
+        updateMeetingHeadline();
+        return;
+      }
+      const out = await API.getHostedReminders();
+      if (!out?.success) {
+        updateMeetingHeadline();
+        return;
+      }
+      const reminders = Array.isArray(out.reminders) ? out.reminders : [];
+      state.activeReminder = reminders.length ? reminders[0] : null;
+      updateMeetingHeadline();
+
+      const r = state.activeReminder;
+      if (!r) return;
+      const inMinutes = Number(r.in_minutes || NaN);
+      if (r.event_id && Number.isFinite(inMinutes) && inMinutes >= 0 && inMinutes <= 10 && state.lastReminderAlertId !== r.event_id) {
+        state.lastReminderAlertId = r.event_id;
+        await openMeetingPanel();
+        showToast(`Meeting reminder: ${r.person_name || r.person_email || 'contact'} ${formatRelativeMinutes(r.scheduled_at || '')}`);
+      }
+    }
+
+    function bindEvents() {
+      els.signinBtn.addEventListener('click', async () => {
+        try {
+          const out = await API.authOpenLogin();
+          if (!out?.success) throw new Error(out?.error || 'signin_window_failed');
+          showToast('Sign-in window opened. Complete login there.');
+        } catch (err) {
+          showToast(err.message || String(err), 'error', 4200);
+        }
+      });
+
+      els.listenBtn.addEventListener('click', async () => {
+        try {
+          if (state.listening) {
+            await stopListening();
+          } else {
+            await startListening();
+          }
+        } catch (err) {
+          showToast(err.message || String(err), 'error', 4000);
+          await stopListening();
+        }
+      });
+
+      els.summaryBtn.addEventListener('click', async () => {
+        try {
+          const result = await runAnalysis(
+            'Generate concise, tactical call guidance. Separate pain points from objections. Prioritize next best actions and concrete follow-up language. Keep it direct and sales-focused; no AI disclaimers.',
+            'full',
+          );
+          await openAnalysisPanels(result);
+        } catch (err) {
+          showToast(err.message || String(err), 'error', 4200);
+        }
+      });
+
+      els.meetingBtn.addEventListener('click', () => {
+        openMeetingPanel().catch((err) => showToast(err.message || String(err), 'error'));
+      });
+
+      els.transcriptBtn.addEventListener('click', () => {
+        openTranscriptPanel().catch((err) => showToast(err.message || String(err), 'error'));
+      });
+
+      els.askBtn.addEventListener('click', () => {
+        els.promptDock.classList.toggle('visible');
+        if (els.promptDock.classList.contains('visible')) {
+          els.promptInput.focus();
+        }
+      });
+
+      const runPrompt = async () => {
+        const prompt = els.promptInput.value.trim();
+        if (!prompt) return;
+        els.promptInput.value = '';
+        try {
+          const result = await runAnalysis(prompt, 'full');
+          await openAnalysisPanels(result);
+        } catch (err) {
+          showToast(err.message || String(err), 'error', 4200);
+        }
+      };
+
+      els.sendPromptBtn.addEventListener('click', runPrompt);
+      els.promptInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') runPrompt();
+      });
+
+      els.tenantSelect.addEventListener('change', () => {
+        if (!els.tenantInput.value.trim()) {
+          els.tenantInput.value = els.tenantSelect.value || '';
+        }
+      });
+
+      els.settingsBtn.addEventListener('click', () => {
+        els.settingsPanel.classList.toggle('show');
+      });
+      els.settingsCloseBtn.addEventListener('click', () => {
+        els.settingsPanel.classList.remove('show');
+      });
+      els.saveSettingsBtn.addEventListener('click', () => {
+        saveSettings().catch((err) => showToast(err.message || String(err), 'error'));
+      });
+      els.refreshOrgsBtn.addEventListener('click', () => {
+        refreshOrgOptions().catch((err) => showToast(err.message || String(err), 'error'));
+      });
+      els.reauthBtn.addEventListener('click', async () => {
+        const out = await API.authOpenLogin();
+        if (!out?.success) showToast(out?.error || 'Failed to open sign-in', 'error');
+      });
+      els.signoutBtn.addEventListener('click', async () => {
+        const out = await API.authSignOut();
+        if (!out?.success) {
+          showToast(out?.error || 'Sign out failed', 'error');
           return;
         }
-        setStatus(`Running ${kind} analysis...`);
-        API.sendAnalysisRequest({
-          id: `analysis_${Date.now()}`,
-          transcript,
-          analysisType: kind,
-          context: {
-            customPrompt: promptEl.value.trim() || undefined,
-          },
-        });
-      } catch (err) {
-        setStatus(String(err.message || err));
-      }
+        state.auth = { authenticated: false };
+        state.transcript = '';
+        state.transcriptSegments = [];
+        await refreshConfigAndAuth();
+        showToast('Signed out.');
+      });
+
+      els.pinBtn.addEventListener('click', async () => {
+        const out = await API.windowTogglePin();
+        if (out?.success) {
+          state.pinned = Boolean(out.pinned);
+          updateButtons();
+        }
+      });
+      els.minBtn.addEventListener('click', () => API.windowMinimize());
+      els.closeBtn.addEventListener('click', () => API.windowClose());
+
+      API.onAuthUpdated(() => {
+        refreshConfigAndAuth().catch(() => {});
+      });
+
+      API.onASRMessage((msg) => {
+        if (!msg) return;
+        if (msg.op === 'transcript' && msg.text) {
+          const text = String(msg.text).trim();
+          if (!text) return;
+          state.transcriptSegments.push(text);
+          state.transcript = `${state.transcript}\n${text}`.trim();
+          if (state.sessionId) {
+            API.sessionAppendTranscript(state.sessionId, { text, ts: nowIso() });
+          }
+        }
+        if (msg.op === 'error') {
+          showToast(msg.message || 'ASR error', 'error', 4500);
+        }
+      });
+
+      API.onAnalysisResponse((event) => {
+        const data = event?.data || {};
+        const id = data.id;
+        if (!id) return;
+        const pending = state.pendingAnalysis.get(id);
+        if (!pending) return;
+        state.pendingAnalysis.delete(id);
+        if (data.error) {
+          pending.reject(new Error(data.error));
+        } else {
+          if (state.sessionId && data.results) {
+            API.sessionAppendAnalysis(state.sessionId, { ts: nowIso(), results: data.results });
+          }
+          pending.resolve(data);
+        }
+      });
+
+      API.onResponse((msg) => {
+        if (msg?.error) showToast(msg.error, 'error');
+      });
+
+      API.onModelStatus((status) => {
+        if (status?.message) {
+          setHeadline('Laserreach Intelli', status.message);
+        }
+      });
     }
 
-    document.getElementById('btnStart').addEventListener('click', () => {
-      startListening().catch((err) => {
-        appendTimeline(`Start failed: ${String(err.message || err)}`, 'sys');
-        setStatus(`Start failed: ${String(err.message || err)}`);
-      });
-    });
-
-    document.getElementById('btnStop').addEventListener('click', () => {
-      stopListening().catch((err) => {
-        setStatus(`Stop failed: ${String(err.message || err)}`);
-      });
-    });
-
-    document.getElementById('btnSummary').addEventListener('click', () => runAnalysis('summary'));
-    document.getElementById('btnActions').addEventListener('click', () => runAnalysis('full'));
-
-    promptEl.addEventListener('keydown', (event) => {
-      if (event.key !== 'Enter' || event.shiftKey) return;
-      event.preventDefault();
-      const prompt = promptEl.value.trim();
-      if (!prompt) return;
-      appendTimeline(prompt, 'user');
-      setStatus('Querying hosted analysis...');
-      API.sendPrompt(`prompt_${Date.now()}`, prompt, state.transcript.slice(-6000));
-      promptEl.value = '';
-    });
-
-    const settingsModal = document.getElementById('settingsModal');
-    document.getElementById('btnSettings').addEventListener('click', () => {
-      settingsModal.classList.add('show');
-      loadConfigToUI().catch(() => {});
-    });
-
-    document.getElementById('btnCloseSettings').addEventListener('click', () => {
-      settingsModal.classList.remove('show');
-    });
-
-    document.getElementById('btnSaveSettings').addEventListener('click', async () => {
-      const res = await API.setHostedConfig(configFromUI());
-      if (!res || !res.success) {
-        setStatus(`Save failed: ${res?.error || 'unknown error'}`);
-        return;
-      }
-      state.config = res.config;
-      brandSubEl.textContent = `Hosted via ${state.config.backendUrl} · ${state.config.analysisModel}`;
-      settingsModal.classList.remove('show');
-      setStatus('Settings saved.');
-      await refreshReminders();
-    });
-
-    API.onASRMessage((msg) => {
-      if (!msg) return;
-      if (msg.op === 'final') {
-        const text = String(msg.text || '').trim();
-        if (!text) return;
-        state.transcript += (state.transcript ? '\n' : '') + text;
-        appendTimeline(text, 'ai');
-        if (state.sessionId) {
-          API.sessionAppendTranscript(state.sessionId, {
-            text,
-            ts: new Date().toISOString(),
-          });
-        }
-        setStatus('Transcript updated.');
-        return;
-      }
-      if (msg.op === 'error') {
-        appendTimeline(`ASR error: ${msg.message || 'unknown error'}`, 'sys');
-        setStatus(`ASR error: ${msg.message || 'unknown error'}`);
-        return;
-      }
-      if (msg.op === 'status') {
-        setStatus(String(msg.message || 'ASR status updated'));
-      }
-    });
-
-    API.onResponse((msg) => {
-      if (!msg) return;
-      if (msg.error) {
-        appendTimeline(`Prompt error: ${msg.error}`, 'sys');
-        setStatus(`Prompt error: ${msg.error}`);
-        return;
-      }
-      const text = String(msg.response || '').trim();
-      if (!text) return;
-      addInsightCard('Prompt Response', text, ['hosted', 'direct']);
-      if (state.sessionId) {
-        API.sessionAppendAnalysis(state.sessionId, {
-          type: 'prompt_response',
-          text,
-          ts: new Date().toISOString(),
-        });
-      }
-      setStatus('Prompt response ready.');
-    });
-
-    API.onAnalysisResponse(({ data }) => {
-      if (!data) return;
-      if (data.error) {
-        appendTimeline(`Analysis error: ${data.error}`, 'sys');
-        setStatus(`Analysis error: ${data.error}`);
-        return;
-      }
-
-      const summary = data.results?.summary || '';
-      const actions = data.results?.suggestions?.actionItems || [];
-      const questions = data.results?.suggestions?.questions || [];
-
-      if (summary) {
-        addInsightCard('Summary', typeof summary === 'string' ? summary : JSON.stringify(summary, null, 2), ['summary']);
-      }
-      if (Array.isArray(actions) && actions.length) {
-        addInsightCard('Next Best Actions', actions.map((a, i) => `${i + 1}. ${typeof a === 'string' ? a : JSON.stringify(a)}`).join('\n'), ['actions']);
-      }
-      if (Array.isArray(questions) && questions.length) {
-        addInsightCard('Discovery Questions', questions.map((q, i) => `${i + 1}. ${typeof q === 'string' ? q : JSON.stringify(q)}`).join('\n'), ['questions']);
-      }
-
-      if (state.sessionId) {
-        API.sessionAppendAnalysis(state.sessionId, {
-          type: 'analysis',
-          data: data.results,
-          ts: new Date().toISOString(),
-        });
-      }
-      setStatus('Analysis complete.');
-    });
-
-    API.onModelStatus((status) => {
-      if (status?.message) setStatus(status.message);
-    });
-
     async function boot() {
-      timelineEl.innerHTML = '<div class="empty">Start listening to begin live transcription and generate revenue intelligence bubbles.</div>';
-      bubbleGridEl.innerHTML = '<div class="empty">Summaries, objections, next actions, and questions appear here as reusable insight bubbles.</div>';
-      await loadConfigToUI();
+      bindEvents();
+      await refreshConfigAndAuth();
+      updateMeetingHeadline();
       await refreshReminders();
-      setInterval(() => {
+      state.reminderTimer = window.setInterval(() => {
         refreshReminders().catch(() => {});
-      }, 30000);
-      updateSessionMeta();
-      setStatus('Hosted Intelli ready.');
+      }, 45000);
     }
 
     boot().catch((err) => {
-      setStatus(`Startup error: ${String(err.message || err)}`);
+      showToast(err.message || String(err), 'error', 5000);
     });
   </script>
 </body>
