@@ -224,9 +224,30 @@ async function captureAuthFromWindow(win) {
   if (!win || win.isDestroyed()) return null;
   const script = `(() => {
     try {
-      const jwt = localStorage.getItem('jwt') || localStorage.getItem('access_token') || localStorage.getItem('token') || '';
-      const tenantId = localStorage.getItem('currentOrgId') || '';
-      const username = localStorage.getItem('username') || '';
+      const query = new URLSearchParams(location.search || '');
+      const hash = new URLSearchParams(String(location.hash || '').replace(/^#/, ''));
+      const jwt =
+        localStorage.getItem('jwt') ||
+        localStorage.getItem('access_token') ||
+        localStorage.getItem('token') ||
+        sessionStorage.getItem('jwt') ||
+        sessionStorage.getItem('access_token') ||
+        sessionStorage.getItem('token') ||
+        query.get('token') ||
+        query.get('access_token') ||
+        hash.get('token') ||
+        hash.get('access_token') ||
+        '';
+      const tenantId =
+        localStorage.getItem('currentOrgId') ||
+        sessionStorage.getItem('currentOrgId') ||
+        query.get('org_id') ||
+        '';
+      const username =
+        localStorage.getItem('username') ||
+        sessionStorage.getItem('username') ||
+        query.get('username') ||
+        '';
       return { jwt, tenantId, username, href: location.href };
     } catch (e) {
       return { jwt: '', tenantId: '', username: '', error: String(e) };
@@ -239,6 +260,26 @@ async function captureAuthFromWindow(win) {
   } catch {
     return null;
   }
+}
+
+function decodeJwtPayloadUnsafe(token) {
+  try {
+    const parts = String(token || '').split('.');
+    if (parts.length !== 3) return null;
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+    const json = Buffer.from(padded, 'base64').toString('utf8');
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
+function isUsableAuthToken(token) {
+  const payload = decodeJwtPayloadUnsafe(token);
+  if (!payload) return true;
+  if (payload.two_fa_required === true || payload['2fa_required'] === true) return false;
+  return true;
 }
 
 async function applyAuthToken({ token, backendUrl, tenantId, username }) {
@@ -274,6 +315,7 @@ async function openAuthWindow() {
   const cfg = hostedConfigStore.get();
   const candidates = loginUrlCandidates(cfg);
   const startUrl = candidates[0] || 'http://localhost:8788';
+  const authChildren = new Set();
 
   authWindow = new BrowserWindow({
     width: 1120,
@@ -288,17 +330,42 @@ async function openAuthWindow() {
     },
   });
 
-  const tryCapture = async () => {
-    const captured = await captureAuthFromWindow(authWindow);
+  const closeAuthWindows = () => {
+    for (const child of authChildren) {
+      try {
+        if (child && !child.isDestroyed()) child.close();
+      } catch (_) {
+        // no-op
+      }
+    }
+    authChildren.clear();
+    try {
+      if (authWindow && !authWindow.isDestroyed()) authWindow.close();
+    } catch (_) {
+      // no-op
+    }
+  };
+
+  const tryCaptureFrom = async (targetWindow) => {
+    const captured = await captureAuthFromWindow(targetWindow);
     if (!captured || !captured.jwt) return false;
+    if (!isUsableAuthToken(captured.jwt)) return false;
     await applyAuthToken({
       token: captured.jwt,
       backendUrl: cfg.backendUrl,
       tenantId: captured.tenantId,
       username: captured.username,
     });
-    if (authWindow && !authWindow.isDestroyed()) authWindow.close();
+    closeAuthWindows();
     return true;
+  };
+
+  const tryCapture = async () => {
+    if (await tryCaptureFrom(authWindow)) return true;
+    for (const child of authChildren) {
+      if (await tryCaptureFrom(child)) return true;
+    }
+    return false;
   };
 
   const looksLikeMethodNotAllowed = async () => {
@@ -347,6 +414,29 @@ async function openAuthWindow() {
     await loadCandidateAt(candidateIndex);
   };
 
+  authWindow.webContents.setWindowOpenHandler(() => ({ action: 'allow' }));
+  authWindow.webContents.on('did-create-window', (childWindow) => {
+    try {
+      if (!childWindow || childWindow.isDestroyed()) return;
+      applyContentProtection(childWindow, 'auth-child');
+      authChildren.add(childWindow);
+      childWindow.webContents.on('did-finish-load', () => {
+        tryCapture().catch(() => {});
+      });
+      childWindow.webContents.on('did-navigate', () => {
+        tryCapture().catch(() => {});
+      });
+      childWindow.webContents.on('did-navigate-in-page', () => {
+        tryCapture().catch(() => {});
+      });
+      childWindow.on('closed', () => {
+        authChildren.delete(childWindow);
+      });
+    } catch (_) {
+      // no-op
+    }
+  });
+
   authWindow.once('ready-to-show', () => authWindow.show());
   authWindow.webContents.on('did-finish-load', async () => {
     try {
@@ -368,6 +458,7 @@ async function openAuthWindow() {
   });
 
   authWindow.on('closed', () => {
+    closeAuthWindows();
     authWindow = null;
     if (captureTimer) {
       clearInterval(captureTimer);

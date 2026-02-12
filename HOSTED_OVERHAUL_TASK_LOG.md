@@ -46,3 +46,11 @@ Deliver Intelli as a hosted-only in-call sales intelligence overlay:
 - Bar overlay window (`setContentProtection(true)`).
 - Floating insight panel windows (`setContentProtection(true)`).
 - Added regression assertion in `tests/overlay-shell.test.js`.
+
+## 2026-02-12 OAuth Reliability Patch
+- Improved Intelli auth-window token capture for Google OAuth and popup flows:
+- Capture now checks `localStorage`, `sessionStorage`, and URL query/hash token fields.
+- Added JWT claim guard to ignore temporary 2FA tokens (`2fa_required=true`) and wait for final auth token.
+- Added child-window capture path via `did-create-window` so popup OAuth flows can complete.
+- Explicitly allowed auth popup windows in Electron (`setWindowOpenHandler`).
+- Added regression assertions in `tests/overlay-shell.test.js`.

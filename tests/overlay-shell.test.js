@@ -40,6 +40,9 @@ test('Main process contract is hosted-only with auth and panel IPC wiring', () =
   assert.match(mainJs, /minWidth:\s*720/);
   assert.match(mainJs, /maxHeight:\s*220/);
   assert.match(mainJs, /setContentProtection\(true\)/);
+  assert.match(mainJs, /setWindowOpenHandler\(\(\) => \(\{ action: 'allow' \}\)\)/);
+  assert.match(mainJs, /did-create-window/);
+  assert.match(mainJs, /2fa_required/);
 
   // Guard against reintroducing local-model runtime pathways.
   assert.equal(mainJs.includes('llm-worker'), false);
