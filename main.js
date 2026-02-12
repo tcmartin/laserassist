@@ -16,6 +16,15 @@ let panelCounter = 0;
 const panelWindows = new Map();
 const meetingAlertedIds = new Set();
 
+function applyContentProtection(win, label = 'window') {
+  try {
+    if (!win || win.isDestroyed()) return;
+    win.setContentProtection(true);
+  } catch (err) {
+    console.warn(`Unable to enable content protection for ${label}:`, err);
+  }
+}
+
 function safeSend(channel, payload) {
   if (!barWindow || barWindow.isDestroyed()) return;
   barWindow.webContents.send(channel, payload);
@@ -56,11 +65,11 @@ function createHostedRuntime() {
 
 function createBarWindow() {
   barWindow = new BrowserWindow({
-    width: 960,
-    height: 72,
-    minWidth: 860,
-    minHeight: 64,
-    maxHeight: 120,
+    width: 1120,
+    height: 108,
+    minWidth: 720,
+    minHeight: 86,
+    maxHeight: 220,
     frame: false,
     transparent: true,
     resizable: true,
@@ -76,6 +85,7 @@ function createBarWindow() {
       sandbox: false,
     },
   });
+  applyContentProtection(barWindow, 'bar');
 
   barWindow.loadFile('index.html');
   barWindow.once('ready-to-show', () => {
@@ -162,6 +172,7 @@ function appendAuthCandidates(list, baseUrl) {
   const base = normalizeBackendUrl(baseUrl);
   if (!base) return;
   list.push(`${base}/login`);
+  list.push(`${base}/oauth-bridge`);
   list.push(`${base}/register`);
   list.push(`${base}/`);
 }
@@ -290,11 +301,64 @@ async function openAuthWindow() {
     return true;
   };
 
+  const looksLikeMethodNotAllowed = async () => {
+    if (!authWindow || authWindow.isDestroyed()) return false;
+    try {
+      const out = await authWindow.webContents.executeJavaScript(`(() => {
+        try {
+          const title = String(document.title || '').toLowerCase();
+          const body = String((document.body && document.body.innerText) || '').toLowerCase().slice(0, 1200);
+          const href = String(location.href || '').toLowerCase();
+          return { title, body, href };
+        } catch (e) {
+          return { title: '', body: '', href: '' };
+        }
+      })();`, true);
+      const hay = `${out?.title || ''} ${out?.body || ''} ${out?.href || ''}`;
+      return hay.includes('405') || hay.includes('method not allowed');
+    } catch {
+      return false;
+    }
+  };
+
   let captureTimer = null;
+  let candidateIndex = 0;
+
+  const loadCandidateAt = async (index) => {
+    if (!authWindow || authWindow.isDestroyed()) {
+      return { success: false, error: 'auth_window_closed' };
+    }
+    const url = candidates[index];
+    if (!url) {
+      return { success: false, error: 'no_auth_urls_available' };
+    }
+    try {
+      await authWindow.loadURL(url);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: String(err?.message || err) };
+    }
+  };
+
+  const tryNextCandidate = async () => {
+    if (!authWindow || authWindow.isDestroyed()) return;
+    if (candidateIndex >= candidates.length - 1) return;
+    candidateIndex += 1;
+    await loadCandidateAt(candidateIndex);
+  };
 
   authWindow.once('ready-to-show', () => authWindow.show());
-  authWindow.webContents.on('did-finish-load', () => {
-    tryCapture().catch(() => {});
+  authWindow.webContents.on('did-finish-load', async () => {
+    try {
+      const captured = await tryCapture();
+      if (captured) return;
+      const is405 = await looksLikeMethodNotAllowed();
+      if (is405) {
+        await tryNextCandidate();
+      }
+    } catch (_) {
+      // no-op
+    }
   });
   authWindow.webContents.on('did-navigate', () => {
     tryCapture().catch(() => {});
@@ -311,22 +375,27 @@ async function openAuthWindow() {
     }
   });
 
-  captureTimer = setInterval(() => {
-    tryCapture().catch(() => {});
+  captureTimer = setInterval(async () => {
+    try {
+      const captured = await tryCapture();
+      if (captured) return;
+      const is405 = await looksLikeMethodNotAllowed();
+      if (is405) {
+        await tryNextCandidate();
+      }
+    } catch (_) {
+      // no-op
+    }
   }, 1200);
 
-  try {
-    await authWindow.loadURL(startUrl);
-  } catch (err) {
-    for (const alt of candidates.slice(1)) {
-      try {
-        await authWindow.loadURL(alt);
-        return { success: true };
-      } catch (_) {
-        // try next
-      }
+  const first = await loadCandidateAt(candidateIndex);
+  if (!first.success) {
+    for (let i = 1; i < candidates.length; i += 1) {
+      candidateIndex = i;
+      const attempt = await loadCandidateAt(candidateIndex);
+      if (attempt.success) return { success: true };
     }
-    return { success: false, error: String(err?.message || err) };
+    return { success: false, error: first.error || `failed_to_load_auth_url:${startUrl}` };
   }
 
   return { success: true };
@@ -431,6 +500,7 @@ function openPanel(payload = {}) {
       sandbox: false,
     },
   });
+  applyContentProtection(panel, 'panel');
 
   panel.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(panelHtml(payload))}`);
   panel.on('closed', () => {

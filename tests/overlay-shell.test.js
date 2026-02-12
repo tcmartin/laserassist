@@ -17,6 +17,8 @@ test('Overlay renderer uses compact control bar + dynamic panels and no manual t
   assert.match(html, /id="refreshOrgsBtn"/);
   assert.match(html, /id="frontendInput"/);
   assert.match(html, /openOverlayPanel/);
+  assert.match(html, /grid-template-columns:\s*minmax\(240px,\s*1fr\)\s*auto/);
+  assert.match(html, /\.controls\s*\{[\s\S]*flex-wrap:\s*wrap/);
 
   // Ensure users are not asked to paste raw JWT tokens in the UI.
   assert.equal(/id="jwt/i.test(html), false);
@@ -35,6 +37,9 @@ test('Main process contract is hosted-only with auth and panel IPC wiring', () =
   assert.match(mainJs, /:3100/);
   assert.match(mainJs, /overlay-open-panel/);
   assert.match(mainJs, /hosted-get-reminders/);
+  assert.match(mainJs, /minWidth:\s*720/);
+  assert.match(mainJs, /maxHeight:\s*220/);
+  assert.match(mainJs, /setContentProtection\(true\)/);
 
   // Guard against reintroducing local-model runtime pathways.
   assert.equal(mainJs.includes('llm-worker'), false);

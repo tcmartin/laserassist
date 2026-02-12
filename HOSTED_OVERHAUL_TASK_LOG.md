@@ -30,3 +30,19 @@ Deliver Intelli as a hosted-only in-call sales intelligence overlay:
 ## Notes
 - Legacy local-mode files may still exist historically in repo, but active runtime path is hosted-only.
 - Default backend remains `http://localhost:8788` for local development against Laserreach backend.
+
+## 2026-02-12 UI Accessibility Patch
+- Fixed initial overlay control accessibility by making toolbar responsive and wrap-safe.
+- `index.html`:
+- Converted bar layout to CSS grid with responsive breakpoints.
+- Enabled control wrapping and left-align fallback on narrow widths.
+- Added keyboard focus-visible outline for all buttons.
+- `main.js`:
+- Increased bar window startup size and relaxed bounds (`minWidth=720`, `maxHeight=220`) so wrapped controls remain visible/clickable.
+- Regression assertions added in `tests/overlay-shell.test.js`.
+
+## 2026-02-12 Screen Protection Patch
+- Enabled Electron OS-level content protection on Intelli windows:
+- Bar overlay window (`setContentProtection(true)`).
+- Floating insight panel windows (`setContentProtection(true)`).
+- Added regression assertion in `tests/overlay-shell.test.js`.

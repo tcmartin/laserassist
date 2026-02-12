@@ -41,19 +41,20 @@
     }
 
     .bar {
-      height: 52px;
-      display: flex;
+      min-height: 52px;
+      display: grid;
+      grid-template-columns: minmax(240px, 1fr) auto;
       align-items: center;
-      justify-content: space-between;
       padding: 8px 10px;
-      gap: 8px;
+      column-gap: 10px;
+      row-gap: 8px;
     }
 
     .drag-zone {
       display: flex;
       align-items: center;
       gap: 10px;
-      min-width: 280px;
+      min-width: 0;
       flex: 1;
       -webkit-app-region: drag;
     }
@@ -81,7 +82,7 @@
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      max-width: 360px;
+      max-width: 100%;
     }
 
     .headline-sub {
@@ -90,13 +91,16 @@
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      max-width: 420px;
+      max-width: 100%;
     }
 
     .controls {
       display: flex;
       align-items: center;
       gap: 6px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      max-width: 100%;
       -webkit-app-region: no-drag;
     }
 
@@ -114,6 +118,7 @@
     }
 
     .btn:hover { border-color: rgba(151, 184, 255, 0.7); background: rgba(66, 90, 140, 0.5); }
+    .btn:focus-visible { outline: 2px solid rgba(169, 200, 255, 0.9); outline-offset: 1px; }
     .btn:disabled { opacity: 0.45; cursor: not-allowed; }
     .btn.primary { background: rgba(70, 117, 218, 0.66); }
     .btn.ok { background: rgba(52, 138, 86, 0.66); border-color: rgba(111, 227, 157, 0.55); }
@@ -243,6 +248,36 @@
       color: #ffe8af;
       border-color: rgba(255, 201, 89, 0.6);
       background: rgba(122, 86, 23, 0.58);
+    }
+
+    @media (max-width: 1160px) {
+      .bar {
+        grid-template-columns: 1fr;
+      }
+      .controls {
+        justify-content: flex-start;
+      }
+      .status-pill {
+        max-width: 100%;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .bar {
+        padding: 7px 8px;
+      }
+      .btn {
+        height: 32px;
+        padding: 0 8px;
+        font-size: 11px;
+      }
+      .icon-btn {
+        width: 30px;
+        min-width: 30px;
+      }
+      .headline-sub {
+        display: none;
+      }
     }
   </style>
 </head>
