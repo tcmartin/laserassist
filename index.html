@@ -1,4429 +1,897 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-
 <head>
   <meta charset="UTF-8" />
-  <title>Laserreach Intelli - In-Call Revenue Intelligence</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Laserreach Intelli</title>
+  <link rel="icon" href="assets/laserreach-logo.png" />
   <style>
+    :root {
+      --bg: #05070d;
+      --panel: #0f1320;
+      --panel-2: #151b2b;
+      --text: #f1f5ff;
+      --muted: #9aa8c7;
+      --blue: #4a88ff;
+      --green: #2ed19a;
+      --line: rgba(147, 173, 227, 0.22);
+      --shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+    }
+
+    * { box-sizing: border-box; }
     body {
       margin: 0;
-      background: transparent;
+      color: var(--text);
       font-family: "Manrope", "Avenir Next", "Segoe UI", sans-serif;
-    }
-
-    #widget {
-      position: fixed;
-      top: 20px;
-      left: 20px;
-      right: 20px;
-      bottom: 20px;
-      background: linear-gradient(145deg, rgba(14, 18, 28, 0.96), rgba(18, 24, 36, 0.96));
-      color: #fff;
-      border-radius: 16px;
-      display: flex;
-      flex-direction: column;
-      box-shadow: 0 16px 48px rgba(5, 10, 20, 0.52);
-      backdrop-filter: blur(12px);
-      -webkit-app-region: drag;
+      background: radial-gradient(circle at 0% 0%, rgba(76, 131, 255, 0.12), transparent 45%), var(--bg);
       overflow: hidden;
-      border: 1px solid rgba(112, 132, 168, 0.28);
     }
 
-    /* Make interactive elements non-draggable */
-    button,
-    input,
-    textarea,
-    select,
-    a {
-      -webkit-app-region: no-drag;
+    #app {
+      position: fixed;
+      inset: 14px;
+      border-radius: 18px;
+      background: linear-gradient(145deg, rgba(11, 15, 24, 0.98), rgba(9, 12, 20, 0.98));
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      overflow: hidden;
     }
 
-    /* Make scrollable content areas non-draggable */
-    .widget-content,
-    .panel-content,
-    .content-container {
-      -webkit-app-region: no-drag;
-    }
-
-    /* Keep panel headers draggable for window movement */
-    .panel-header {
-      -webkit-app-region: drag;
-    }
-
-    /* But make panel controls non-draggable */
-    .panel-controls,
-    .panel-controls * {
-      -webkit-app-region: no-drag;
-    }
-
-    /* Make all interactive UI elements non-draggable */
-    .activity-button,
-    .suggestion-item,
-    .summary-item,
-    .manual-trigger,
-    .control-btn,
-    .expand-btn,
-    .settings-form input,
-    .settings-form textarea,
-    .settings-form select,
-    .settings-form button,
-    .settings-form label,
-    #transcript,
-    #answer,
-    #logs,
-    #prompt {
-      -webkit-app-region: no-drag;
-    }
-
-    /* Modal overlay should allow dragging for window movement */
-    .modal-overlay {
-      -webkit-app-region: drag;
-    }
-
-    /* Modal content background should be draggable, but form content should not */
-    .modal-content {
-      -webkit-app-region: drag;
-    }
-
-    /* Modal header should be draggable */
-    .modal-header {
-      -webkit-app-region: drag;
-    }
-
-    /* But modal body (scrollable content) should not be draggable */
-    #modal-body {
-      -webkit-app-region: no-drag;
-    }
-
-    /* Settings sections should allow scrolling, not dragging */
-    .settings-form {
-      -webkit-app-region: no-drag;
-    }
-
-    .settings-section {
-      -webkit-app-region: no-drag;
-    }
-
-    .settings-section-title {
-      -webkit-app-region: no-drag;
-    }
-
-    /* Ensure modal close button is non-draggable */
-    .modal-close {
-      -webkit-app-region: no-drag;
-    }
-
-    /* MCP settings elements should be non-draggable for interaction */
-    .mcp-servers-list,
-    .mcp-server-item,
-    .mcp-server-form,
-    .mcp-server-controls,
-    .mcp-form-actions,
-    .mcp-form-row,
-    #mcp-server-form,
-    #add-mcp-server,
-    .mcp-server-controls button,
-    .mcp-form-actions button,
-    .mcp-form-row input,
-    .mcp-form-row textarea,
-    .mcp-form-row select,
-    .setting-input,
-    .setting-checkbox,
-    .settings-btn {
-      -webkit-app-region: no-drag;
-    }
-
-    /* Fixed header section with core controls */
-    .widget-header {
-      padding: 16px;
-      border-bottom: 1px solid #333;
-      flex-shrink: 0;
-      background: linear-gradient(180deg, rgba(22, 29, 44, 0.95), rgba(18, 23, 34, 0.88));
-      -webkit-app-region: drag;
-      /* Header is draggable */
-    }
-
-    /* But header buttons and controls are not draggable */
-    .widget-header button,
-    .widget-header .control-row {
-      -webkit-app-region: no-drag;
-    }
-
-    .brand-row {
-      display: flex;
+    .header {
+      display: grid;
+      grid-template-columns: 1fr auto;
       align-items: center;
-      justify-content: space-between;
       gap: 12px;
-      margin-bottom: 10px;
-      -webkit-app-region: no-drag;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(20, 27, 42, 0.96), rgba(14, 20, 32, 0.92));
+      -webkit-app-region: drag;
     }
 
-    .brand-mark {
-      display: inline-flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .brand-mark img {
-      width: 30px;
-      height: 30px;
-      border-radius: 8px;
-      object-fit: cover;
-      border: 1px solid rgba(132, 168, 218, 0.35);
-      background: rgba(13, 18, 30, 0.85);
-    }
-
-    .brand-text {
+    .brand {
       display: flex;
-      flex-direction: column;
-      line-height: 1.15;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
     }
 
-    .brand-title {
-      font-weight: 700;
-      font-size: 14px;
-      letter-spacing: 0.01em;
-      color: #e8f0ff;
+    .brand img {
+      width: 34px;
+      height: 34px;
+      border-radius: 9px;
+      border: 1px solid rgba(134, 170, 255, 0.4);
+      background: #101a2a;
     }
 
-    .brand-subtitle {
-      font-size: 11px;
-      color: #9fb3d9;
-      letter-spacing: 0.02em;
-      text-transform: uppercase;
-    }
+    .brand-title { font-size: 17px; font-weight: 700; letter-spacing: 0.01em; }
+    .brand-subtitle { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-    .brand-badge {
-      font-size: 11px;
-      color: #a9ffd8;
-      background: rgba(48, 122, 99, 0.24);
-      border: 1px solid rgba(83, 191, 150, 0.45);
-      padding: 4px 8px;
-      border-radius: 999px;
-    }
-
-    .control-row {
+    .controls {
       display: flex;
       gap: 8px;
-      margin-bottom: 8px;
-    }
-
-    .control-row:last-child {
-      margin-bottom: 0;
-    }
-
-    .control-row button {
-      flex: 1;
-      padding: 8px 12px;
-      border: none;
-      border-radius: 6px;
-      background: linear-gradient(180deg, #4d8ef7, #3679ef);
-      color: white;
-      cursor: pointer;
-      font-size: 13px;
-      transition: background-color 0.2s;
-    }
-
-    .control-row button:hover {
-      background: linear-gradient(180deg, #5c9aff, #3e7ff2);
-    }
-
-    .control-row button:disabled {
-      background: #555;
-      cursor: not-allowed;
-    }
-
-    .status-display {
-      font-size: 12px;
-      color: #d3def3;
-      text-align: left;
-      margin: 6px 0 2px 0;
-    }
-
-    .reminder-banner {
-      margin-top: 8px;
-      padding: 9px 10px;
-      border-radius: 10px;
-      background: rgba(18, 62, 99, 0.38);
-      border: 1px solid rgba(102, 173, 241, 0.45);
-      color: #d7ebff;
-      font-size: 12px;
-      line-height: 1.45;
       -webkit-app-region: no-drag;
+      flex-wrap: wrap;
+      justify-content: flex-end;
     }
 
-    .reminder-banner.hidden {
-      display: none;
-    }
-
-    .reminder-banner strong {
-      color: #f7fcff;
+    .btn {
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, #2d3c5d, #1f2d4a);
+      color: var(--text);
+      border-radius: 999px;
+      padding: 8px 14px;
       font-size: 12px;
-      letter-spacing: 0.01em;
-    }
-
-    .reminder-meta {
-      font-size: 11px;
-      color: #b8d5f7;
-    }
-
-    /* Scrollable content area */
-    .widget-content {
-      flex: 1;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-      min-height: 0;
-    }
-
-    /* Panel sections */
-    .panel-section {
-      border-bottom: 1px solid #333;
-      background: rgba(255, 255, 255, 0.025);
-    }
-
-    .panel-section:last-child {
-      border-bottom: none;
-    }
-
-    .panel-header {
-      padding: 12px 16px;
+      font-weight: 600;
       cursor: pointer;
-      user-select: none;
+      transition: 120ms ease;
+      white-space: nowrap;
+    }
+
+    .btn:hover { transform: translateY(-1px); }
+    .btn.primary { background: linear-gradient(180deg, #5294ff, #2e74eb); }
+    .btn.success { background: linear-gradient(180deg, #29c98e, #16a872); }
+    .btn.warn { background: linear-gradient(180deg, #f8aa52, #dc7f1f); }
+
+    .main {
+      display: grid;
+      grid-template-columns: minmax(340px, 1.15fr) minmax(260px, 0.85fr);
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .timeline-panel,
+    .bubble-panel {
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      overflow: hidden;
+    }
+
+    .timeline-panel {
+      border-right: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(17, 25, 40, 0.55), rgba(10, 15, 24, 0.4));
+    }
+
+    .panel-head {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      background: rgba(255, 255, 255, 0.05);
-      transition: background-color 0.2s;
-    }
-
-    .reminders-list {
-      display: flex;
-      flex-direction: column;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
       gap: 8px;
     }
 
-    .reminder-item {
+    .panel-title { font-size: 13px; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; color: #c8d8fb; }
+    .panel-meta { font-size: 12px; color: var(--muted); }
+
+    .timeline {
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      overflow-y: auto;
+      -webkit-app-region: no-drag;
+    }
+
+    .bubble {
+      max-width: 92%;
+      border-radius: 14px;
+      padding: 11px 12px;
+      border: 1px solid var(--line);
+      white-space: pre-wrap;
+      line-height: 1.35;
+      font-size: 13px;
+      word-break: break-word;
+    }
+
+    .bubble.user {
+      align-self: flex-end;
+      background: linear-gradient(180deg, rgba(68, 120, 236, 0.45), rgba(44, 88, 186, 0.45));
+    }
+
+    .bubble.ai {
+      align-self: flex-start;
+      background: linear-gradient(180deg, rgba(34, 182, 130, 0.25), rgba(21, 123, 88, 0.25));
+    }
+
+    .bubble.sys {
+      align-self: center;
+      background: linear-gradient(180deg, rgba(64, 78, 105, 0.4), rgba(44, 56, 81, 0.4));
+      color: #d6e3ff;
+      font-size: 12px;
+    }
+
+    .bubble small {
+      display: block;
+      margin-top: 6px;
+      color: #b9c9eb;
+      font-size: 11px;
+    }
+
+    .bubble-panel {
+      background: linear-gradient(180deg, rgba(12, 18, 30, 0.65), rgba(8, 13, 24, 0.55));
+    }
+
+    .bubble-grid {
+      overflow-y: auto;
+      padding: 14px;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+      -webkit-app-region: no-drag;
+    }
+
+    .insight-card {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px;
+      background: linear-gradient(160deg, rgba(29, 36, 54, 0.84), rgba(19, 26, 42, 0.84));
+      display: grid;
+      gap: 8px;
+    }
+
+    .insight-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #d3def9;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .insight-body {
+      font-size: 13px;
+      line-height: 1.4;
+      color: #f4f8ff;
+      white-space: pre-wrap;
+    }
+
+    .insight-tags {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .tag {
+      font-size: 11px;
+      border-radius: 999px;
+      padding: 3px 8px;
+      border: 1px solid rgba(154, 184, 238, 0.35);
+      color: #b8cdf1;
+      background: rgba(32, 45, 72, 0.55);
+    }
+
+    .footer {
+      border-top: 1px solid var(--line);
+      padding: 12px 14px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: center;
+      -webkit-app-region: no-drag;
+      background: rgba(11, 16, 28, 0.94);
+    }
+
+    .prompt {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: #0f1728;
+      color: var(--text);
+      padding: 10px 12px;
+      font-size: 13px;
+      outline: none;
+    }
+
+    .status {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .reminder-strip {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 0 14px 10px 14px;
+      border-bottom: 1px solid var(--line);
+      -webkit-app-region: no-drag;
+      background: rgba(12, 18, 30, 0.75);
+    }
+
+    .reminder-card {
+      min-width: 220px;
+      border-radius: 12px;
+      border: 1px solid rgba(97, 166, 255, 0.4);
       padding: 10px;
-      border-radius: 10px;
-      border: 1px solid rgba(126, 160, 218, 0.35);
-      background: rgba(24, 39, 63, 0.34);
+      background: linear-gradient(180deg, rgba(40, 72, 126, 0.35), rgba(23, 44, 81, 0.35));
       font-size: 12px;
       line-height: 1.35;
     }
 
-    .reminder-item-title {
-      color: #f4f8ff;
-      font-weight: 600;
-      margin-bottom: 4px;
-    }
+    .reminder-card strong { display: block; font-size: 12px; margin-bottom: 4px; }
 
-    .reminder-item-meta {
-      color: #b1c9ee;
-      font-size: 11px;
-    }
-
-    .panel-header:hover {
-      background: rgba(255, 255, 255, 0.08);
-    }
-
-    .panel-title {
-      font-weight: bold;
-      font-size: 14px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .panel-controls {
-      display: flex;
-      gap: 6px;
-      align-items: center;
-    }
-
-    .expand-btn {
-      background: none;
-      border: 1px solid #666;
-      color: #ddd;
-      padding: 4px 8px;
-      border-radius: 4px;
-      font-size: 10px;
-      cursor: pointer;
-      margin: 0;
-    }
-
-    .expand-btn:hover {
-      background: rgba(255, 255, 255, 0.1);
-    }
-
-    .collapse-icon {
-      transition: transform 0.2s ease;
-      font-size: 12px;
-      color: #aaa;
-    }
-
-    .collapse-icon.collapsed {
-      transform: rotate(-90deg);
-    }
-
-    .panel-content {
-      max-height: 300px;
-      overflow-y: auto;
-      transition: max-height 0.3s ease;
-      padding: 0 16px 12px 16px;
-    }
-
-    .panel-content.collapsed {
-      max-height: 0;
-      padding: 0 16px;
-      overflow: hidden;
-    }
-
-    /* Transcript panel specific */
-    #transcript {
-      white-space: pre-wrap;
-      font-size: 12px;
-      line-height: 1.4;
-      color: #fff;
-      background: rgba(255, 255, 255, 0.05);
-      padding: 12px;
-      border-radius: 6px;
-      margin: 8px 0;
-      min-height: 60px;
-    }
-
-    /* LLM panel specific */
-    .llm-input-section {
-      padding: 12px 16px;
-    }
-
-    #prompt {
-      width: 100%;
-      padding: 8px;
-      border: 1px solid #555;
-      border-radius: 6px;
-      background: rgba(255, 255, 255, 0.1);
-      color: #fff;
-      font-size: 13px;
-      resize: vertical;
-      min-height: 40px;
-      margin-bottom: 8px;
-    }
-
-    #prompt::placeholder {
-      color: #aaa;
-    }
-
-    #ask {
-      width: 100%;
-      padding: 8px;
-      border: none;
-      border-radius: 6px;
-      background: #2196F3;
-      color: white;
-      cursor: pointer;
-      font-size: 13px;
-    }
-
-    #ask:hover {
-      background: #1976D2;
-    }
-
-    #ask:disabled {
-      background: #555;
-      cursor: not-allowed;
-    }
-
-    #answer {
-      white-space: pre-wrap;
-      font-size: 12px;
-      line-height: 1.4;
-      color: #fff;
-      background: rgba(255, 255, 255, 0.05);
-      padding: 12px;
-      border-radius: 6px;
-      margin: 8px 0;
-      min-height: 40px;
-      max-height: 150px;
-      overflow-y: auto;
-    }
-
-    #logs {
-      font-size: 10px;
-      color: #f88;
-      background: rgba(255, 255, 255, 0.05);
-      padding: 8px;
-      border-radius: 6px;
-      margin: 8px 0;
-      max-height: 100px;
-      overflow-y: auto;
-    }
-
-    /* Progress bar styles */
-    .progress-container {
-      width: 100%;
-      background-color: #333;
-      border-radius: 4px;
-      margin: 8px 0;
-      overflow: hidden;
-      height: 20px;
-    }
-
-    .progress-bar {
-      height: 100%;
-      background-color: #4CAF50;
-      text-align: center;
-      line-height: 20px;
-      color: white;
-      font-size: 12px;
-      transition: width 0.3s ease;
-    }
-
-    .hidden {
-      display: none;
-    }
-
-    .model-status {
-      font-size: 14px;
-      margin: 8px 0;
-      color: #ddd;
-    }
-
-    .error {
-      color: #ff6b6b;
-    }
-
-    .success {
-      color: #4CAF50;
-    }
-
-    .warning {
-      color: #ffb347;
-    }
-
-    .download-btn {
-      background-color: #4CAF50;
-      color: white;
-      border: none;
-      padding: 8px;
-      border-radius: 4px;
-      cursor: pointer;
-      margin-top: 8px;
-    }
-
-    .download-btn:hover {
-      background-color: #45a049;
-    }
-
-    .download-btn:disabled {
-      background-color: #555;
-      cursor: not-allowed;
-    }
-
-    /* Analysis status indicator */
-    .analysis-status {
-      font-size: 11px;
-      color: #aaa;
-      display: flex;
-      align-items: center;
-      gap: 4px;
-    }
-
-    .status-indicator {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background-color: #666;
-    }
-
-    .status-indicator.analyzing {
-      background-color: #ffb347;
-      animation: pulse 1.5s infinite;
-    }
-
-    .status-indicator.ready {
-      background-color: #4CAF50;
-    }
-
-    .status-indicator.error {
-      background-color: #ff6b6b;
-    }
-
-    @keyframes pulse {
-
-      0%,
-      100% {
-        opacity: 1;
-      }
-
-      50% {
-        opacity: 0.5;
-      }
-    }
-
-    /* Insights sections */
-    .insights-section {
-      margin: 12px 0;
-    }
-
-    .section-title {
-      font-size: 12px;
-      font-weight: bold;
-      color: #ddd;
-      margin-bottom: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-
-    .manual-trigger {
-      background: none;
-      border: 1px solid #666;
-      color: #ddd;
-      padding: 3px 8px;
-      border-radius: 4px;
-      font-size: 10px;
-      cursor: pointer;
-      margin: 0;
-      width: auto;
-    }
-
-    .manual-trigger:hover {
-      background-color: rgba(255, 255, 255, 0.1);
-    }
-
-    .manual-trigger:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
-    /* Summary and suggestions content */
-    .content-container {
-      max-height: 200px;
-      overflow-y: auto;
-    }
-
-    .content-container.expanded {
-      max-height: 500px;
-    }
-
-    .summary-item {
-      background-color: rgba(255, 255, 255, 0.05);
-      border-radius: 6px;
-      padding: 8px;
-      margin-bottom: 6px;
-      font-size: 12px;
-      line-height: 1.4;
-    }
-
-    .summary-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 4px;
-    }
-
-    .summary-time {
-      color: #aaa;
-      font-size: 10px;
-    }
-
-    .summary-content {
-      color: #fff;
-    }
-
-    .suggestion-category {
-      margin-bottom: 8px;
-    }
-
-    .category-header {
-      font-size: 10px;
-      color: #bbb;
-      font-weight: bold;
-      margin-bottom: 4px;
-      text-transform: uppercase;
-      padding: 2px 0;
-      border-bottom: 1px solid #333;
-    }
-
-    .suggestion-item {
-      background-color: rgba(255, 255, 255, 0.05);
-      border-radius: 4px;
-      padding: 6px 8px;
-      margin-bottom: 3px;
-      font-size: 11px;
-      line-height: 1.3;
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-    }
-
-    .suggestion-content {
-      flex: 1;
-      color: #fff;
-    }
-
-    .suggestion-priority {
-      font-size: 9px;
-      padding: 2px 6px;
-      border-radius: 3px;
-      margin-left: 6px;
-      flex-shrink: 0;
-      font-weight: bold;
-    }
-
-    .suggestion-priority.high {
-      background-color: #ff6b6b;
-      color: white;
-    }
-
-    .suggestion-priority.medium {
-      background-color: #ffb347;
-      color: black;
-    }
-
-    .suggestion-priority.low {
-      background-color: #666;
-      color: white;
-    }
-
-    .empty-state {
-      color: #888;
-      font-size: 11px;
-      font-style: italic;
-      text-align: center;
-      padding: 16px;
-      background: rgba(255, 255, 255, 0.02);
-      border-radius: 6px;
-    }
-
-    /* Activity styles */
-    .activity-item {
-      background-color: rgba(255, 255, 255, 0.05);
-      border-radius: 4px;
-      padding: 6px 8px;
-      margin-bottom: 4px;
-      font-size: 11px;
-      line-height: 1.3;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .activity-button {
-      background: #2196F3;
-      color: white;
-      border: none;
-      padding: 4px 8px;
-      border-radius: 3px;
-      cursor: pointer;
-      font-size: 10px;
-      transition: background-color 0.2s;
-    }
-
-    .activity-button:hover {
-      background: #1976D2;
-    }
-
-    .activity-button:disabled {
-      background: #666;
-      cursor: not-allowed;
-    }
-
-    .activity-button.executed {
-      background: #4CAF50;
-    }
-
-    .activity-confidence {
-      font-size: 9px;
-      color: #aaa;
-      margin-left: 6px;
-    }
-
-    .insights-controls {
-      display: flex;
-      gap: 8px;
-      margin-top: 12px;
-      padding-top: 12px;
-      border-top: 1px solid #333;
-    }
-
-    .control-btn {
-      background: none;
-      border: 1px solid #666;
-      color: #ddd;
-      padding: 6px 12px;
-      border-radius: 4px;
-      font-size: 11px;
-      cursor: pointer;
-      margin: 0;
-      width: auto;
-      flex: 1;
-    }
-
-    .control-btn:hover {
-      background-color: rgba(255, 255, 255, 0.1);
-    }
-
-    .control-btn:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
-    /* Expandable modal overlay */
-    .modal-overlay {
+    .modal {
       position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0, 0, 0, 0.8);
+      inset: 0;
+      background: rgba(6, 8, 14, 0.72);
       display: none;
-      z-index: 1000;
-      backdrop-filter: blur(5px);
-    }
-
-    .modal-overlay.active {
-      display: flex;
       align-items: center;
       justify-content: center;
+      z-index: 99;
+      -webkit-app-region: no-drag;
     }
 
-    .modal-content {
-      background: rgba(0, 0, 0, 0.95);
-      border-radius: 12px;
-      padding: 24px;
-      max-width: 80vw;
-      max-height: 80vh;
-      overflow-y: auto;
-      color: #fff;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-    }
+    .modal.show { display: flex; }
 
-    .modal-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 20px;
-      padding-bottom: 12px;
-      border-bottom: 1px solid #333;
-    }
-
-    .modal-title {
-      font-size: 18px;
-      font-weight: bold;
-    }
-
-    .modal-close {
-      background: none;
-      border: none;
-      color: #aaa;
-      font-size: 24px;
-      cursor: pointer;
-      padding: 0;
-      width: 30px;
-      height: 30px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 50%;
-    }
-
-    .modal-close:hover {
-      background: rgba(255, 255, 255, 0.1);
-      color: #fff;
-    }
-
-    /* Settings Modal Styles */
-    .settings-form {
-      display: flex;
-      flex-direction: column;
-      gap: 20px;
-      max-width: 600px;
-    }
-
-    .settings-section {
-      background: rgba(255, 255, 255, 0.05);
-      border-radius: 8px;
+    .modal-card {
+      width: min(720px, 90vw);
+      max-height: 86vh;
+      overflow: auto;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, #121a2c, #0d1322);
+      box-shadow: var(--shadow);
       padding: 16px;
-    }
-
-    .settings-section-title {
-      font-size: 16px;
-      font-weight: bold;
-      margin-bottom: 12px;
-      color: #fff;
-      border-bottom: 1px solid #333;
-      padding-bottom: 8px;
-    }
-
-    .setting-item {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      margin-bottom: 16px;
-    }
-
-    .setting-item:last-child {
-      margin-bottom: 0;
-    }
-
-    .setting-label {
-      font-size: 14px;
-      font-weight: 500;
-      color: #ddd;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-
-    .setting-description {
-      font-size: 12px;
-      color: #aaa;
-      margin-top: 2px;
-    }
-
-    .setting-input {
-      background: rgba(255, 255, 255, 0.1);
-      border: 1px solid #555;
-      border-radius: 4px;
-      padding: 8px;
-      color: #fff;
-      font-size: 13px;
-    }
-
-    .setting-input:focus {
-      outline: none;
-      border-color: #2196F3;
-      background: rgba(255, 255, 255, 0.15);
-    }
-
-    .setting-input[type="number"] {
-      width: 120px;
-    }
-
-    .setting-input[type="range"] {
-      width: 100%;
-    }
-
-    .setting-checkbox {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      cursor: pointer;
-    }
-
-    .setting-checkbox input[type="checkbox"] {
-      width: 16px;
-      height: 16px;
-      cursor: pointer;
-    }
-
-    .setting-checkbox-group {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      margin-top: 8px;
-    }
-
-    .range-display {
-      font-size: 12px;
-      color: #aaa;
-      text-align: right;
-    }
-
-    .settings-actions {
-      display: flex;
-      gap: 12px;
-      justify-content: flex-end;
-      padding-top: 16px;
-      border-top: 1px solid #333;
-    }
-
-    .settings-btn {
-      background: #2196F3;
-      color: white;
-      border: none;
-      padding: 10px 20px;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 13px;
-      transition: background-color 0.2s;
-    }
-
-    .settings-btn:hover {
-      background: #1976D2;
-    }
-
-    .settings-btn.secondary {
-      background: #666;
-    }
-
-    .settings-btn.secondary:hover {
-      background: #777;
-    }
-
-    .settings-btn.danger {
-      background: #f44336;
-    }
-
-    .settings-btn.danger:hover {
-      background: #d32f2f;
-    }
-
-    .settings-status {
-      padding: 8px 12px;
-      border-radius: 4px;
-      font-size: 12px;
-      margin-bottom: 16px;
-    }
-
-    .settings-status.success {
-      background: rgba(76, 175, 80, 0.2);
-      color: #4CAF50;
-      border: 1px solid #4CAF50;
-    }
-
-    .settings-status.error {
-      background: rgba(244, 67, 54, 0.2);
-      color: #f44336;
-      border: 1px solid #f44336;
-    }
-
-    .settings-status.warning {
-      background: rgba(255, 193, 7, 0.2);
-      color: #FFC107;
-      border: 1px solid #FFC107;
-    }
-
-    /* MCP Settings Styles */
-    .mcp-servers-list {
-      margin-top: 12px;
-    }
-
-    .mcp-server-item {
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid #444;
-      border-radius: 6px;
-      padding: 12px;
-      margin-bottom: 8px;
-      position: relative;
-    }
-
-    .mcp-server-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 8px;
-    }
-
-    .mcp-server-name {
-      font-weight: bold;
-      color: #fff;
-      font-size: 14px;
-    }
-
-    .mcp-server-status {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 12px;
-    }
-
-    .mcp-status-indicator {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background-color: #666;
-    }
-
-    .mcp-status-indicator.connected {
-      background-color: #4CAF50;
-    }
-
-    .mcp-status-indicator.disconnected {
-      background-color: #f44336;
-    }
-
-    .mcp-status-indicator.connecting {
-      background-color: #ffb347;
-      animation: pulse 1.5s infinite;
-    }
-
-    .mcp-server-details {
-      font-size: 12px;
-      color: #aaa;
-      margin-bottom: 8px;
-    }
-
-    .mcp-server-command {
-      font-family: monospace;
-      background: rgba(255, 255, 255, 0.1);
-      padding: 4px 6px;
-      border-radius: 3px;
-      margin: 2px 0;
-    }
-
-    .mcp-server-controls {
-      display: flex;
-      gap: 6px;
-      align-items: center;
-    }
-
-    .mcp-server-controls button {
-      background: #666;
-      color: white;
-      border: none;
-      padding: 4px 8px;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 11px;
-      transition: background-color 0.2s;
-    }
-
-    .mcp-server-controls button:hover {
-      background: #777;
-    }
-
-    .mcp-server-controls button.test-btn {
-      background: #2196F3;
-    }
-
-    .mcp-server-controls button.test-btn:hover {
-      background: #1976D2;
-    }
-
-    .mcp-server-controls button.toggle-btn.enabled {
-      background: #4CAF50;
-    }
-
-    .mcp-server-controls button.toggle-btn.enabled:hover {
-      background: #45a049;
-    }
-
-    .mcp-server-controls button.delete-btn {
-      background: #f44336;
-    }
-
-    .mcp-server-controls button.delete-btn:hover {
-      background: #d32f2f;
-    }
-
-    .mcp-server-form {
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid #555;
-      border-radius: 6px;
-      padding: 16px;
-      margin-top: 12px;
-      display: none;
-    }
-
-    .mcp-server-form.active {
-      display: block;
-    }
-
-    .mcp-form-row {
-      display: flex;
-      gap: 12px;
-      margin-bottom: 12px;
-    }
-
-    .mcp-form-row .setting-item {
-      flex: 1;
-      margin-bottom: 0;
-    }
-
-    .mcp-form-actions {
-      display: flex;
-      gap: 8px;
-      justify-content: flex-end;
-      margin-top: 16px;
-      padding-top: 12px;
-      border-top: 1px solid #444;
-    }
-
-    .mcp-form-actions button {
-      background: #666;
-      color: white;
-      border: none;
-      padding: 6px 12px;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 12px;
-    }
-
-    .mcp-form-actions button.primary {
-      background: #2196F3;
-    }
-
-    .mcp-form-actions button.primary:hover {
-      background: #1976D2;
-    }
-
-    .mcp-form-actions button:hover {
-      background: #777;
-    }
-
-    .mcp-empty-state {
-      text-align: center;
-      color: #888;
-      font-size: 12px;
-      font-style: italic;
-      padding: 20px;
-      background: rgba(255, 255, 255, 0.02);
-      border-radius: 6px;
-      border: 1px dashed #444;
-    }
-
-    /* MCP Tool Indicators */
-    .mcp-tool-indicators {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      margin-bottom: 8px;
-      padding: 8px;
-      background: rgba(33, 150, 243, 0.1);
-      border-radius: 4px;
-      border-left: 3px solid #2196F3;
-    }
-
-    .mcp-tool-indicator {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      background: rgba(33, 150, 243, 0.2);
-      color: #2196F3;
-      padding: 3px 8px;
-      border-radius: 12px;
-      font-size: 10px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: background-color 0.2s;
-    }
-
-    .mcp-tool-indicator:hover {
-      background: rgba(33, 150, 243, 0.3);
-    }
-
-    .mcp-tool-icon {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: #2196F3;
-    }
-
-    .mcp-tool-loading {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      background: rgba(255, 179, 71, 0.2);
-      color: #ffb347;
-      padding: 4px 10px;
-      border-radius: 4px;
-      font-size: 11px;
-      margin-bottom: 8px;
-    }
-
-    .mcp-tool-loading .loading-spinner {
-      width: 12px;
-      height: 12px;
-      border: 2px solid rgba(255, 179, 71, 0.3);
-      border-top: 2px solid #ffb347;
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-    }
-
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-
-    .mcp-tool-error {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      background: rgba(244, 67, 54, 0.2);
-      color: #f44336;
-      padding: 4px 10px;
-      border-radius: 4px;
-      font-size: 11px;
-      margin-bottom: 8px;
-    }
-
-    .mcp-tool-details {
-      display: none;
-      background: rgba(255, 255, 255, 0.05);
-      border-radius: 4px;
-      padding: 8px;
-      margin-top: 4px;
-      font-size: 10px;
-      color: #aaa;
-    }
-
-    .mcp-tool-details.active {
-      display: block;
-    }
-
-    .mcp-tool-details-header {
-      font-weight: bold;
-      color: #ddd;
-      margin-bottom: 4px;
-    }
-
-    .mcp-tool-params {
-      background: rgba(255, 255, 255, 0.05);
-      padding: 4px 6px;
-      border-radius: 3px;
-      font-family: monospace;
-      margin: 2px 0;
-    }
-
-    .mcp-response-content {
-      margin-top: 8px;
-    }
-
-    /* Sessions viewer */
-    #sessions-overlay {
-      position: fixed;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(0,0,0,0.6);
-      display: none;
-      align-items: center;
-      justify-content: center;
-      z-index: 1000;
-    }
-    #sessions-overlay.active { display: flex; }
-    #sessions-modal {
-      width: 900px; max-width: 95vw;
-      height: 70vh; max-height: 85vh;
-      background: #1e1e1e;
-      color: #eee;
-      border-radius: 8px;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
       display: grid;
-      grid-template-columns: 280px 1fr;
-      overflow: hidden;
+      gap: 12px;
     }
-    .sessions-sidebar {
-      border-right: 1px solid rgba(255,255,255,0.1);
-      overflow-y: auto;
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .field { display: grid; gap: 6px; }
+
+    .field label {
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    .field input, .field select {
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: #0f1728;
+      color: var(--text);
       padding: 10px;
-      background: #181818;
+      font-size: 13px;
+      outline: none;
     }
-    .sessions-header {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,0.1);
-      font-weight: bold; color: #ddd;
+
+    .full { grid-column: 1 / -1; }
+
+    .empty {
+      border: 1px dashed rgba(146, 171, 221, 0.4);
+      border-radius: 12px;
+      padding: 14px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 13px;
     }
-    .sessions-close { background: none; color: #aaa; border: none; cursor: pointer; }
-    .session-item { padding: 8px; border-radius: 6px; margin-bottom: 6px; cursor: pointer; }
-    .session-item:hover { background: rgba(255,255,255,0.06); }
-    .session-item.active { background: rgba(255,255,255,0.12); }
-    .session-title { font-size: 12px; color: #ddd; }
-    .session-meta { font-size: 10px; color: #aaa; }
-    .sessions-content { padding: 10px; overflow-y: auto; }
-    .final-summary { background: rgba(255,255,255,0.06); padding: 10px; border-radius: 6px; margin-bottom: 10px; }
-    .viewer-section { margin-bottom: 12px; }
-    .viewer-section h4 { margin: 0 0 6px 0; color: #ddd; }
-    .viewer-transcript { white-space: pre-wrap; background: rgba(255,255,255,0.04); padding: 10px; border-radius: 6px; max-height: 240px; overflow-y: auto; font-size: 12px; }
-    .viewer-actions { display:flex; gap:8px; }
+
+    @media (max-width: 1080px) {
+      .main { grid-template-columns: 1fr; }
+      .timeline-panel { border-right: none; border-bottom: 1px solid var(--line); }
+      .form-grid { grid-template-columns: 1fr; }
+      .footer { grid-template-columns: 1fr; }
+    }
   </style>
-  <style>
-    /* License overlay reuses modal styles */
-    .modal-overlay { position: fixed; inset:0; background: rgba(0,0,0,0.6); display:none; align-items:center; justify-content:center; z-index: 1000; }
-    .modal-overlay.active { display:flex; }
-    .modal { width: 520px; max-width: 95vw; background: #1e1e1e; color: #eee; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.4); overflow: hidden; }
-    .modal-header { display:flex; align-items:center; justify-content: space-between; padding:10px 12px; border-bottom:1px solid rgba(255,255,255,0.1); font-weight:bold; color:#ddd; }
-    .modal-body { padding: 12px; }
-    .modal-close { cursor:pointer; color:#aaa; }
-  </style>
-
-  <!-- IndexedDB/fetch helper -->
-  <script src="helpers.js"></script>
-
-  <!-- TranscriptBuffer for managing transcript segments -->
-  <script src="transcript-buffer.js"></script>
-
-  <!-- WASM path removed: using external Python ASR only -->
-
-  <!-- Settings Manager -->
-  <script src="settings-manager.js"></script>
-
-  <!-- Analysis Components -->
-  <script src="summary-generator.js"></script>
-  <script src="suggestion-generator.js"></script>
-  <script src="activity-generator.js"></script>
-  <script src="analysis-engine.js"></script>
-
-  <!-- WASM bundle removed: forcing external Python ASR -->
 </head>
-
 <body>
-    <div id="widget">
-    <!-- Fixed header with core controls -->
-    <div class="widget-header">
-      <div class="brand-row">
-        <div class="brand-mark">
-          <img src="assets/laserreach-logo.png" alt="Laserreach logo" />
-          <div class="brand-text">
-            <span class="brand-title">Laserreach Intelli</span>
-            <span class="brand-subtitle">In-Call Revenue Intelligence</span>
-          </div>
+  <div id="app">
+    <div class="header">
+      <div class="brand">
+        <img src="assets/laserreach-logo.png" alt="Laserreach" />
+        <div>
+          <div class="brand-title">Laserreach Intelli</div>
+          <div id="brandSub" class="brand-subtitle">Hosted in-call intelligence · Deepgram + GPT-5-mini</div>
         </div>
-        <span id="hosted-mode-badge" class="brand-badge">Local Mode</span>
       </div>
-      <div class="status-display" id="status">Ready</div>
-
-      <div class="control-row">
-        <button id="btn-start">🎙️ Start Recording</button>
-        <button id="btn-stop" disabled>✋ Stop Recording</button>
-        <button id="btn-sessions">📂 Sessions</button>
-        <button id="btn-go-pro" class="download-btn">Go Pro</button>
-      </div>
-
-      <!-- Model download status section -->
-      <div id="model-section">
-        <div id="model-status" class="model-status">Checking LLM model...</div>
-        <div id="progress-container" class="progress-container hidden">
-          <div id="progress-bar" class="progress-bar" style="width:0%">0%</div>
-        </div>
-        <button id="download-btn" class="download-btn hidden">Download Model</button>
-      </div>
-      <div id="meeting-reminder-banner" class="reminder-banner hidden"></div>
-    </div>
-
-    <!-- License Modal -->
-    <div id="license-overlay" class="modal-overlay">
-      <div class="modal">
-        <div class="modal-header">
-          <span id="license-title">Pro License</span>
-          <span class="modal-close" onclick="closeLicenseModal()">✖</span>
-        </div>
-        <div class="modal-body">
-          <div id="license-status" style="margin-bottom:8px;color:#aaa">Checking license...</div>
-          <input id="license-input" type="text" placeholder="Enter license key (e.g., INS-XXXX...)" style="width:100%;padding:8px;border-radius:4px;border:1px solid rgba(255,255,255,0.2);background:#222;color:#eee;">
-          <div style="margin-top:8px;display:flex;gap:8px;">
-            <button class="settings-btn" onclick="submitLicense()">Activate</button>
-            <button class="settings-btn secondary" onclick="clearLicense()">Clear</button>
-          </div>
-          <div style="margin-top:10px;font-size:12px;color:#888;">Pro unlocks: 4B tier, final summaries, batch export, cross-session search, and more.</div>
-        </div>
+      <div class="controls">
+        <button id="btnStart" class="btn success">Start Listening</button>
+        <button id="btnStop" class="btn warn" disabled>Stop</button>
+        <button id="btnSummary" class="btn">Summarize</button>
+        <button id="btnActions" class="btn">Next Actions</button>
+        <button id="btnSettings" class="btn primary">Settings</button>
       </div>
     </div>
 
-    <!-- Scrollable content area -->
-    <div class="widget-content">
-      <!-- Transcript Panel -->
-      <div class="panel-section">
-        <div class="panel-header" onclick="togglePanel('transcript')">
-          <div class="panel-title">
-            <span>📝 Live Transcript</span>
-          </div>
-          <div class="panel-controls">
-            <button class="expand-btn" onclick="expandPanel('transcript', event)">Expand</button>
-            <span id="transcript-collapse-icon" class="collapse-icon">▼</span>
-          </div>
-        </div>
-        <div id="transcript-content" class="panel-content">
-          <div id="transcript">Start recording to see live transcript...</div>
-        </div>
-      </div>
+    <div id="reminderStrip" class="reminder-strip"></div>
 
-      <!-- Meeting Radar Panel -->
-      <div class="panel-section">
-        <div class="panel-header" onclick="togglePanel('reminders')">
-          <div class="panel-title">
-            <span>📅 Meeting Radar</span>
-          </div>
-          <div class="panel-controls">
-            <button class="expand-btn" onclick="refreshHostedReminders(event)">Refresh</button>
-            <span id="reminders-collapse-icon" class="collapse-icon">▼</span>
-          </div>
+    <div class="main">
+      <section class="timeline-panel">
+        <div class="panel-head">
+          <div class="panel-title">Conversation Timeline</div>
+          <div id="sessionMeta" class="panel-meta">No active session</div>
         </div>
-        <div id="reminders-content" class="panel-content">
-          <div id="reminders-list" class="reminders-list">
-            <div class="empty-state">Hosted reminders are unavailable until hosted mode is enabled.</div>
-          </div>
-        </div>
-      </div>
+        <div id="timeline" class="timeline"></div>
+      </section>
 
-      <!-- LLM Chat Panel -->
-      <div class="panel-section">
-        <div class="panel-header" onclick="togglePanel('llm')">
-          <div class="panel-title">
-            <span>🧠 AI Chat</span>
-          </div>
-          <div class="panel-controls">
-            <button class="expand-btn" onclick="expandPanel('llm', event)">Expand</button>
-            <span id="llm-collapse-icon" class="collapse-icon">▼</span>
-          </div>
+      <section class="bubble-panel">
+        <div class="panel-head">
+          <div class="panel-title">Insight Bubbles</div>
+          <div id="insightMeta" class="panel-meta">0 generated</div>
         </div>
-        <div id="llm-content" class="panel-content">
-          <div class="llm-input-section">
-            <textarea id="prompt" rows="2" placeholder="Ask a question about the conversation..."></textarea>
-            <button id="ask">Ask AI</button>
-          </div>
-          <div id="answer">AI responses will appear here...</div>
-        </div>
-      </div>
+        <div id="bubbleGrid" class="bubble-grid"></div>
+      </section>
+    </div>
 
-      <!-- Insights Panel -->
-      <div class="panel-section">
-        <div class="panel-header" onclick="togglePanel('insights')">
-          <div class="panel-title">
-            <span>🔍 AI Insights</span>
-            <div class="analysis-status">
-              <div id="analysis-status-indicator" class="status-indicator"></div>
-              <span id="analysis-status-text">Ready</span>
-            </div>
-          </div>
-          <div class="panel-controls">
-            <button class="expand-btn" onclick="openSettingsModal(event)">Settings</button>
-            <button class="expand-btn" onclick="expandPanel('insights', event)">Expand</button>
-            <span id="insights-collapse-icon" class="collapse-icon">▼</span>
-          </div>
-        </div>
-        <div id="insights-content" class="panel-content">
-          <!-- Summary Timeline Section -->
-          <div class="insights-section">
-            <div class="section-title">
-              <span>📊 Summary Timeline</span>
-              <button id="manual-summary-trigger" class="manual-trigger" onclick="triggerManualAnalysis('summary')">
-                Refresh
-              </button>
-            </div>
-            <div id="summary-timeline" class="content-container">
-              <div class="empty-state">No summaries yet. Start transcribing to generate insights.</div>
-            </div>
-          </div>
-
-          <!-- Suggestions Section -->
-          <div class="insights-section">
-            <div class="section-title">
-              <span>💡 Smart Suggestions</span>
-              <button id="manual-suggestions-trigger" class="manual-trigger"
-                onclick="triggerManualAnalysis('suggestions')">
-                Refresh
-              </button>
-            </div>
-            <div id="suggestions-container" class="content-container">
-              <div class="empty-state">No suggestions available. Continue the conversation for AI recommendations.</div>
-            </div>
-          </div>
-
-          <!-- Interactive Activities Section -->
-          <div class="insights-section">
-            <div class="section-title">
-              <span>⚡ Interactive Activities</span>
-              <button id="manual-activities-trigger" class="manual-trigger"
-                onclick="triggerManualAnalysis('suggestions')"> <!-- Trigger suggestions analysis -->
-                Refresh
-              </button>
-            </div>
-            <div id="activities-container" class="content-container">
-              <div class="empty-state">No activities available. Continue the conversation for AI recommendations.
-              </div>
-            </div>
-          </div>
-
-          <!-- Controls -->
-          <div class="insights-controls">
-            <button id="clear-insights" class="control-btn" onclick="clearInsights()">Clear All</button>
-            <button id="export-insights" class="control-btn" onclick="exportInsights()">Export</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Logs Panel -->
-      <div class="panel-section">
-        <div class="panel-header" onclick="togglePanel('logs')">
-          <div class="panel-title">
-            <span>🔧 System Logs</span>
-          </div>
-          <div class="panel-controls">
-            <button class="expand-btn" onclick="expandPanel('logs', event)">Expand</button>
-            <span id="logs-collapse-icon" class="collapse-icon collapsed">▶</span>
-          </div>
-        </div>
-        <div id="logs-content" class="panel-content collapsed">
-          <div id="logs">System logs will appear here...</div>
-          <div id="performance-stats" style="margin-top: 10px; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 4px; font-size: 11px; color: #aaa; display: none;">
-            <div><strong>Performance Metrics:</strong></div>
-            <div>Audio Processing: <span id="perf-latency">0ms</span> avg latency</div>
-            <div>Processing Interval: <span id="perf-interval">1500ms</span></div>
-            <div>Chunks Processed: <span id="perf-chunks">0</span></div>
-            <div>Audio Worklet: <span id="perf-worklet">Detecting...</span></div>
-          </div>
-        </div>
-      </div>
+    <div class="footer">
+      <input id="prompt" class="prompt" placeholder="Ask Intelli something about this call..." />
+      <div id="status" class="status">Ready.</div>
     </div>
   </div>
 
-  <!-- Modal overlay for expanded panels -->
-  <div id="modal-overlay" class="modal-overlay">
-    <div class="modal-content">
-      <div class="modal-header">
-        <div id="modal-title" class="modal-title"></div>
-        <button class="modal-close" onclick="closeModal()">&times;</button>
+  <div id="settingsModal" class="modal">
+    <div class="modal-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+        <div class="panel-title" style="font-size:15px;">Hosted Backend Settings</div>
+        <button id="btnCloseSettings" class="btn">Close</button>
       </div>
-      <div id="modal-body"></div>
-    </div>
-  </div>
-
-  <!-- Settings Modal -->
-  <div id="settings-modal" class="modal-overlay">
-    <div class="modal-content">
-      <div class="modal-header">
-        <div class="modal-title">⚙️ Laserreach Intelli Settings</div>
-        <button class="modal-close" onclick="closeSettingsModal()">&times;</button>
-      </div>
-      <div id="settings-status" class="settings-status" style="display: none;"></div>
-      
-      <!-- MCP Server Form (hidden by default) -->
-      <div id="mcp-server-form" class="mcp-server-form">
-        <div class="settings-section-title">
-          <span id="mcp-form-title">Add MCP Server</span>
+      <div class="form-grid">
+        <div class="field full">
+          <label for="cfgBackendUrl">Backend URL</label>
+          <input id="cfgBackendUrl" type="text" placeholder="http://localhost:8788" />
         </div>
-        
-        <div class="mcp-form-row">
-          <div class="setting-item">
-            <label class="setting-label" for="mcp-server-id">Server ID</label>
-            <input type="text" id="mcp-server-id" class="setting-input" placeholder="unique-server-id" />
-            <div class="setting-description">Unique identifier for this server</div>
-          </div>
-          <div class="setting-item">
-            <label class="setting-label" for="mcp-server-name">Display Name</label>
-            <input type="text" id="mcp-server-name" class="setting-input" placeholder="My MCP Server" />
-            <div class="setting-description">Human-readable name for this server</div>
-          </div>
+        <div class="field">
+          <label for="cfgTenant">Tenant ID</label>
+          <input id="cfgTenant" type="text" placeholder="orgl" />
         </div>
-
-        <div class="mcp-form-row">
-          <div class="setting-item">
-            <label class="setting-label" for="mcp-server-command">Command</label>
-            <input type="text" id="mcp-server-command" class="setting-input" placeholder="npx" />
-            <div class="setting-description">Command to execute the MCP server</div>
-          </div>
+        <div class="field">
+          <label for="cfgModel">Analysis Model</label>
+          <select id="cfgModel">
+            <option value="gpt-5-mini">gpt-5-mini</option>
+            <option value="gpt-5-nano">gpt-5-nano</option>
+          </select>
         </div>
-
-        <div class="setting-item">
-          <label class="setting-label" for="mcp-server-args">Arguments</label>
-          <input type="text" id="mcp-server-args" class="setting-input" placeholder="mcp-server-package@latest" />
-          <div class="setting-description">Command arguments (space-separated)</div>
+        <div class="field full">
+          <label for="cfgJwt">JWT Token</label>
+          <input id="cfgJwt" type="password" placeholder="Paste auth token" />
         </div>
-
-        <div class="setting-item">
-          <label class="setting-label" for="mcp-server-env">Environment Variables</label>
-          <textarea id="mcp-server-env" class="setting-input" rows="3" placeholder="KEY1=value1&#10;KEY2=value2"></textarea>
-          <div class="setting-description">Environment variables (KEY=value, one per line)</div>
+        <div class="field">
+          <label for="cfgLookahead">Reminder Lookahead (minutes)</label>
+          <input id="cfgLookahead" type="number" min="5" max="240" step="5" value="30" />
         </div>
-
-        <div class="setting-item">
-          <label class="setting-label">
-            <span>Enabled</span>
-            <div class="setting-checkbox">
-              <input type="checkbox" id="mcp-server-enabled" checked />
-            </div>
-          </label>
-          <div class="setting-description">Enable this server on startup</div>
-        </div>
-
-        <div class="mcp-form-actions">
-          <button type="button" onclick="cancelMCPServerForm()">Cancel</button>
-          <button type="button" onclick="testMCPServerConnection()" class="test-btn">Test Connection</button>
-          <button type="button" onclick="saveMCPServer()" class="primary">Save Server</button>
+        <div class="field">
+          <label for="cfgPipeline">Default Pipeline ID (optional)</label>
+          <input id="cfgPipeline" type="text" placeholder="pipeline UUID" />
         </div>
       </div>
-      <div class="settings-form">
-        <!-- Analysis Settings -->
-        <div class="settings-section">
-          <div class="settings-section-title">Analysis Settings</div>
-
-          <div class="setting-item">
-            <label class="setting-label">
-              <span>Enable Auto Analysis</span>
-              <div class="setting-checkbox">
-                <input type="checkbox" id="enableAutoAnalysis" />
-              </div>
-            </label>
-            <div class="setting-description">Automatically analyze transcript at regular intervals</div>
-          </div>
-
-          <div class="setting-item">
-            <label class="setting-label" for="analysisInterval">
-              Analysis Interval
-              <span class="range-display" id="intervalDisplay">60s</span>
-            </label>
-            <input type="range" id="analysisInterval" class="setting-input" min="10" max="300" step="10" value="60" />
-            <div class="setting-description">How often to analyze new transcript content (10-300 seconds)</div>
-          </div>
-
-          <div class="setting-item">
-            <label class="setting-label" for="minTranscriptLength">Minimum Content Length</label>
-            <input type="number" id="minTranscriptLength" class="setting-input" min="0" max="1000" step="10"
-              value="100" />
-            <div class="setting-description">Minimum characters needed before analysis (0-1000)</div>
-          </div>
-        </div>
-
-        <!-- Feature Settings -->
-        <div class="settings-section">
-          <div class="settings-section-title">Features</div>
-
-          <div class="setting-item">
-            <label class="setting-label">
-              <span>Enable Summaries</span>
-              <div class="setting-checkbox">
-                <input type="checkbox" id="enableSummaries" />
-              </div>
-            </label>
-            <div class="setting-description">Generate periodic summaries of conversation content</div>
-          </div>
-
-          <div class="setting-item">
-            <label class="setting-label">
-              <span>Enable Suggestions</span>
-              <div class="setting-checkbox">
-                <input type="checkbox" id="enableSuggestions" />
-              </div>
-            </label>
-            <div class="setting-description">Generate contextual suggestions and action items</div>
-          </div>
-
-          <div class="setting-item">
-            <label class="setting-label">Suggestion Types</label>
-            <div class="setting-checkbox-group">
-              <label class="setting-checkbox">
-                <input type="checkbox" id="suggestionType-action-item" value="action-item" />
-                <span>Action Items</span>
-              </label>
-              <label class="setting-checkbox">
-                <input type="checkbox" id="suggestionType-question" value="question" />
-                <span>Questions to Ask</span>
-              </label>
-              <label class="setting-checkbox">
-                <input type="checkbox" id="suggestionType-topic" value="topic" />
-                <span>Related Topics</span>
-              </label>
-              <label class="setting-checkbox">
-                <input type="checkbox" id="suggestionType-resource" value="resource" />
-                <span>Helpful Resources</span>
-              </label>
-            </div>
-            <div class="setting-description">Types of suggestions to generate</div>
-          </div>
-        </div>
-
-        <!-- UI Settings -->
-        <div class="settings-section">
-          <div class="settings-section-title">Interface</div>
-
-          <div class="setting-item">
-            <label class="setting-label">
-              <span>Show Analysis Status</span>
-              <div class="setting-checkbox">
-                <input type="checkbox" id="showAnalysisStatus" />
-              </div>
-            </label>
-            <div class="setting-description">Display analysis status indicator in insights panel</div>
-          </div>
-
-          <div class="setting-item">
-            <label class="setting-label">
-              <span>Auto-expand Insights</span>
-              <div class="setting-checkbox">
-                <input type="checkbox" id="autoExpandInsights" />
-              </div>
-            </label>
-            <div class="setting-description">Automatically expand insights panel when new content is available</div>
-          </div>
-
-          <div class="setting-item">
-            <label class="setting-label">
-              <span>Compact Mode</span>
-              <div class="setting-checkbox">
-                <input type="checkbox" id="compactMode" />
-              </div>
-            </label>
-            <div class="setting-description">Use compact display for summaries and suggestions</div>
-          </div>
-        </div>
-
-        <!-- MCP Settings -->
-        <div class="settings-section">
-          <div class="settings-section-title">MCP Servers</div>
-
-          <div class="setting-item">
-            <label class="setting-label">
-              <span>Enable MCP Integration</span>
-              <div class="setting-checkbox">
-                <input type="checkbox" id="enableMCP" />
-              </div>
-            </label>
-            <div class="setting-description">Enable Model Context Protocol for external tools and resources</div>
-          </div>
-
-          <div id="mcp-servers-container">
-            <div class="setting-item">
-              <div class="setting-label">
-                <span>Configured Servers</span>
-                <button id="add-mcp-server" class="settings-btn" style="padding: 4px 8px; font-size: 11px;">Add Server</button>
-              </div>
-              <div id="mcp-servers-list" class="mcp-servers-list">
-                <!-- MCP servers will be populated here -->
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Data Management -->
-        <div class="settings-section">
-          <div class="settings-section-title">Data Management</div>
-
-          <div class="setting-item">
-            <label class="setting-label" for="maxSummaries">Max Summaries to Keep</label>
-            <input type="number" id="maxSummaries" class="setting-input" min="1" max="1000" step="1" value="50" />
-            <div class="setting-description">Maximum number of summaries to keep in memory (1-1000)</div>
-          </div>
-
-          <div class="setting-item">
-            <label class="setting-label" for="maxSuggestions">Max Suggestions to Keep</label>
-            <input type="number" id="maxSuggestions" class="setting-input" min="1" max="1000" step="1" value="100" />
-            <div class="setting-description">Maximum number of suggestions to keep in memory (1-1000)</div>
-          </div>
-
-          <div class="setting-item">
-            <label class="setting-label">
-              <span>Session Persistence</span>
-              <div class="setting-checkbox">
-                <input type="checkbox" id="sessionPersistence" />
-              </div>
-            </label>
-            <div class="setting-description">Save insights data across app restarts</div>
-          </div>
-        </div>
-
-        <!-- Hosted Runtime -->
-        <div class="settings-section">
-          <div class="settings-section-title">Hosted Runtime (Laserreach Backend)</div>
-
-          <div class="setting-item">
-            <label class="setting-label">
-              <span>Enable Hosted Mode (Deepgram + GPT-5-mini)</span>
-              <div class="setting-checkbox">
-                <input type="checkbox" id="hostedEnabled" />
-              </div>
-            </label>
-            <div class="setting-description">Uses Laserreach backend ASR + analysis instead of local ASR/LLM.</div>
-          </div>
-
-          <div class="setting-item">
-            <label class="setting-label" for="hostedBackendUrl">Backend URL</label>
-            <input type="text" id="hostedBackendUrl" class="setting-input" placeholder="http://localhost:8788" />
-          </div>
-
-          <div class="setting-item">
-            <label class="setting-label" for="hostedTenantId">Tenant ID</label>
-            <input type="text" id="hostedTenantId" class="setting-input" placeholder="orgl" />
-          </div>
-
-          <div class="setting-item">
-            <label class="setting-label" for="hostedJwtToken">JWT Token</label>
-            <input type="password" id="hostedJwtToken" class="setting-input" placeholder="Paste ABM auth token" />
-          </div>
-
-          <div class="setting-item">
-            <label class="setting-label" for="hostedAnalysisModel">Analysis Model</label>
-            <select id="hostedAnalysisModel" class="setting-input">
-              <option value="gpt-5-mini">gpt-5-mini</option>
-              <option value="gpt-5-nano">gpt-5-nano</option>
-            </select>
-          </div>
-
-          <div class="setting-item">
-            <label class="setting-label" for="hostedLookaheadMinutes">Reminder Lookahead (minutes)</label>
-            <input type="number" id="hostedLookaheadMinutes" class="setting-input" min="5" max="240" step="5" value="30" />
-          </div>
-
-          <div class="setting-item">
-            <label class="setting-label" for="hostedDefaultPipelineId">Default Pipeline ID (optional)</label>
-            <input type="text" id="hostedDefaultPipelineId" class="setting-input" placeholder="pipeline UUID for meeting context" />
-            <div class="setting-description">Used for context when transcript does not resolve a pipeline directly.</div>
-          </div>
-        </div>
-
-        <!-- LLM & Model -->
-        <div class="settings-section">
-          <div class="settings-section-title">LLM & Model</div>
-
-          <div class="setting-item">
-            <label class="setting-label" for="llmTierOverride">LLM Tier Override</label>
-            <select id="llmTierOverride" class="setting-input">
-              <option value="auto">Auto (recommended)</option>
-              <option value="high">High (4B)</option>
-              <option value="low">Low (1B)</option>
-            </select>
-            <div class="setting-description">Requires app restart to take effect</div>
-          </div>
-        </div>
-
-        <!-- Actions -->
-        <div class="settings-actions">
-          <button class="settings-btn secondary" onclick="resetSettingsToDefaults()">Reset to Defaults</button>
-          <button class="settings-btn secondary" onclick="exportSettings()">Export Settings</button>
-          <button class="settings-btn secondary" onclick="importSettings()">Import Settings</button>
-          <button class="settings-btn" onclick="saveSettings()">Save Settings</button>
-        </div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;">
+        <button id="btnSaveSettings" class="btn primary">Save Settings</button>
       </div>
     </div>
   </div>
-
-  <!-- Hidden file input for settings import -->
-  <input type="file" id="settingsFileInput" accept=".json" style="display: none;" />
 
   <script>
+    const API = window.electronAPI || {
+      async getHostedConfig() {
+        return {
+          success: true,
+          config: {
+            backendUrl: 'http://localhost:8788',
+            tenantId: 'orgl',
+            jwtToken: 'browser-test-token',
+            analysisModel: 'gpt-5-mini',
+            lookaheadMinutes: 30,
+            defaultPipelineId: '',
+          },
+        };
+      },
+      async setHostedConfig(config) { return { success: true, config }; },
+      async getHostedReminders() {
+        return {
+          success: true,
+          reminders: [
+            {
+              event_id: 'evt_browser_1',
+              pipeline_id: 'pipe_browser_1',
+              person_name: 'Browser Prospect',
+              company_name: 'Mock Company',
+              scheduled_at: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
+            },
+          ],
+          count: 1,
+        };
+      },
+      sendPrompt(id, prompt) {
+        setTimeout(() => {
+          this._responseHandlers.forEach((fn) => fn({ id, response: `Mock response for: ${prompt}` }));
+        }, 50);
+      },
+      sendAnalysisRequest(req) {
+        setTimeout(() => {
+          this._analysisHandlers.forEach((fn) => fn({ data: {
+            id: req?.id,
+            type: 'analysis-response',
+            results: {
+              summary: 'Mock analysis summary from browser fallback.',
+              suggestions: {
+                actionItems: ['Mock action 1', 'Mock action 2'],
+                questions: ['Mock question'],
+                topics: [],
+                activities: [],
+              },
+            },
+          }}));
+        }, 80);
+      },
+      onResponse(fn) { this._responseHandlers.push(fn); },
+      onAnalysisResponse(fn) { this._analysisHandlers.push(fn); },
+      onASRMessage(fn) { this._asrHandlers.push(fn); },
+      onModelStatus() {},
+      onStatus() {},
+      asrStart() {},
+      asrSendChunkF32() {},
+      asrStop() {},
+      sessionStart() {},
+      sessionAppendTranscript() {},
+      sessionAppendAnalysis() {},
+      sessionEnd() {},
+      _responseHandlers: [],
+      _analysisHandlers: [],
+      _asrHandlers: [],
+    };
+
+    const state = {
+      config: null,
+      transcript: '',
+      listening: false,
+      sessionId: null,
+      sessionStartedAt: null,
+      insightCount: 0,
+      media: {
+        stream: null,
+        context: null,
+        source: null,
+        processor: null,
+      },
+    };
+
+    const timelineEl = document.getElementById('timeline');
+    const bubbleGridEl = document.getElementById('bubbleGrid');
+    const reminderStripEl = document.getElementById('reminderStrip');
     const statusEl = document.getElementById('status');
-    const logsEl = document.getElementById('logs');
-    const transcriptEl = document.getElementById('transcript');
-    const modelStatusEl = document.getElementById('model-status');
-    const progressContainerEl = document.getElementById('progress-container');
-    const progressBarEl = document.getElementById('progress-bar');
-    const downloadBtnEl = document.getElementById('download-btn');
-    const askBtnEl = document.getElementById('ask');
+    const sessionMetaEl = document.getElementById('sessionMeta');
+    const insightMetaEl = document.getElementById('insightMeta');
     const promptEl = document.getElementById('prompt');
-    const sessionsBtnEl = document.getElementById('btn-sessions');
-    const goProBtnEl = document.getElementById('btn-go-pro');
-    const hostedModeBadgeEl = document.getElementById('hosted-mode-badge');
-    const meetingReminderBannerEl = document.getElementById('meeting-reminder-banner');
-    const remindersListEl = document.getElementById('reminders-list');
+    const brandSubEl = document.getElementById('brandSub');
 
-    // Initialize TranscriptBuffer for managing transcript segments
-    const transcriptBuffer = new TranscriptBuffer();
-
-    // Initialize analysis components
-    let summaryGenerator = null;
-    let suggestionGenerator = null;
-    let analysisEngine = null;
-
-    let instId;
-    let currentSessionId = null;
-    let hostedConfig = null;
-    let hostedReminderTimer = null;
-
-    // Force external Python ASR; mark model selection accordingly
-    const selected = 'external-python';
-
-    // Activity management
-    let currentActivities = [];
-
-
-
-
-
-    // Render activities in the UI
-    function renderActivities(activities) {
-      console.log('renderActivities called with', activities.length, 'activities');
-      const container = document.getElementById('activities-container');
-      if (!container) {
-        console.error('activities-container not found');
-        return;
-      }
-
-      // Clear existing activities before rendering new ones
-      container.innerHTML = '';
-
-      if (activities.length === 0) {
-        container.innerHTML = '<div class="empty-state">No activities available. Continue the conversation for AI recommendations.</div>';
-        return;
-      }
-
-      activities.forEach(activity => {
-        console.log('Rendering activity:', activity.displayText);
-        const activityEl = document.createElement('div');
-        activityEl.className = 'activity-item';
-        activityEl.innerHTML = `
-          <span>${activity.displayText}</span>
-          <div>
-            <span class="activity-confidence">${Math.round(activity.confidence * 100)}%</span>
-            <button class="activity-button" onclick="executeActivity('${activity.id}')" ${activity.executed ? 'disabled' : ''}>
-              ${activity.executed ? '✓ Done' : 'Ask'}
-            </button>
-          </div>
-        `;
-        container.appendChild(activityEl);
-      });
-    }
-
-    // Generate a prompt for an activity based on its type and entity
-    function generateActivityPrompt(activity) {
-      const context = transcriptBuffer.getFullContext();
-      const baseContext = `In the context of this conversation: "${context.substring(context.length - 200)}"`;
-
-      const prompts = {
-        define: `${baseContext}\n\nProvide a clear, concise definition of "${activity.entity}". Include:\n- What it is\n- Key characteristics\n- Why it's relevant to the conversation\n- Any important context or nuances\n\nKeep the explanation accessible and focused on what's most relevant to the discussion.`,
-
-        explain: `${baseContext}\n\nExplain "${activity.entity}" in detail. Include:\n- How it works or functions\n- Key components or aspects\n- Why it's important or significant\n- How it relates to the current discussion\n- Any practical implications\n\nProvide a thorough but accessible explanation.`,
-
-        research: `${baseContext}\n\nProvide research insights about "${activity.entity}". Include:\n- Current state or recent developments\n- Key findings or data points\n- Notable experts or sources\n- Relevant trends or patterns\n- Implications for the topic being discussed\n\nFocus on factual, well-sourced information.`,
-
-        example: `${baseContext}\n\nProvide concrete examples of "${activity.entity}". Include:\n- 3-5 specific, relevant examples\n- Brief explanation of each example\n- How each example illustrates the concept\n- Why these examples are particularly relevant to the conversation\n\nMake examples practical and relatable.`
-      };
-
-      return prompts[activity.type] || `${baseContext}\n\nProvide helpful information about "${activity.entity}" that would be relevant to this conversation.`;
-    }
-
-    // Execute an activity by sending its prompt to the LLM
-    async function executeActivity(activityId) {
-      const activity = currentActivities.find(a => a.id === activityId);
-      if (!activity || activity.executed) return;
-
-      const button = document.querySelector(`button[onclick="executeActivity('${activityId}')"]`);
-      if (button) {
-        button.disabled = true;
-        button.textContent = 'Loading...';
-      }
-
-      try {
-        const llmCallback = async (prompt, id) => {
-          return new Promise((resolve, reject) => {
-            const requestId = nextId++;
-
-            // Store callback for this request
-            cbs[requestId] = (response) => {
-              delete cbs[requestId];
-              if (response.startsWith('Error:')) {
-                reject(new Error(response));
-              } else {
-                resolve(response);
-              }
-            };
-
-            // Send request using existing method
-            const transcriptContext = transcriptBuffer.getFullContext();
-            window.electronAPI.sendPrompt(requestId, prompt, transcriptContext);
-          });
-        };
-
-        // Generate prompt based on activity type and entity
-        const prompt = generateActivityPrompt(activity);
-        const result = await llmCallback(prompt, activity.id);
-
-        // Display result in the chat area
-        const answerEl = document.getElementById('answer');
-        if (answerEl) {
-          answerEl.textContent = `Activity: ${activity.displayText}\n\n${result}`;
-        }
-
-        // Update button
-        if (button) {
-          button.textContent = '✓ Done';
-          button.className = 'activity-button executed';
-        }
-
-      } catch (error) {
-        console.error('Error executing activity:', error);
-        if (button) {
-          button.disabled = false;
-          button.textContent = 'Retry';
-        }
-      }
-    }
-
-    // Clear all activities
-    function clearActivities(clearArray = true) {
-      if (clearArray) {
-        currentActivities = [];
-      }
-      const container = document.getElementById('activities-container');
-      if (container) {
-        container.innerHTML = '<div class="empty-state">No activities available. Continue the conversation for AI recommendations.</div>';
-      }
-    }
-
-    document.getElementById('btn-start').onclick = () => {
-      console.log('Start recording button clicked');
-
-      try {
-        // Clear previous session data
-        clearTranscriptSession();
-
-        // Start analysis engine if it's initialized and auto-analysis is enabled
-        if (analysisEngine) {
-          try {
-            if (analysisEngine._isInitialized()) {
-              const settings = settingsManager ? settingsManager.getSettings() : {};
-              if (settings.enableAutoAnalysis) {
-                analysisEngine.start();
-              }
-            }
-          } catch (error) {
-            console.log('Analysis engine not ready:', error.message);
-          }
-        }
-      } catch (error) {
-        console.error('Error in start button handler:', error);
-      }
-
-      // Force external ASR; do not fallback to WASM
-      window.__useExternalASR = !!window.electronAPI?.asrStart;
-
-      console.log('Requesting microphone access...');
-      if (!window.__useExternalASR && (typeof instId === 'undefined' || !instId)) {
-        console.error('WASM module not ready');
-        statusEl.textContent = 'WASM module not ready. Please wait for initialization.';
-        return;
-      }
-      navigator.mediaDevices.getUserMedia({ audio: true }).then(async stream => {
-        console.log('Microphone access granted');
-        
-        // Create AudioContext with GPU acceleration if available
-        const audioContextOptions = { 
-          sampleRate: 16000,
-          latencyHint: 'interactive' // Optimize for low latency
-        };
-        
-        const ctx = new AudioContext(audioContextOptions);
-        const src = ctx.createMediaStreamSource(stream);
-
-        statusEl.textContent = 'Streaming…';
-        // Start a new local storage session
-        currentSessionId = `session_${new Date().toISOString().replace(/[:.]/g, '-')}_${Math.random().toString(36).slice(2,8)}`;
-        try {
-          const meta = {
-            startedAt: new Date().toISOString(),
-            whisperModel: selected,
-            sampleRate: ctx.sampleRate,
-            platform: navigator.platform,
-            userAgent: navigator.userAgent
-          };
-          if (window.electronAPI?.sessionStart) {
-            window.electronAPI.sessionStart(currentSessionId, meta);
-          }
-        } catch (e) { console.warn('Session start failed', e); }
-        document.getElementById('btn-stop').disabled = false;
-
-        // Use optimized audio processing
-        let audioChunks = [];
-        let totalQueuedSamples = 0;
-        let combinedBufferPool = null;
-        let combinedBufferCapacity = 0;
-        // Rolling window for sentence context
-        let recentChunks = [];
-        let recentSamples = 0;
-        let maxRecentSamples = Math.floor(ctx.sampleRate * 20); // 20s window
-        let useAudioWorklet = false;
-
-        // Simple optional VAD (voice activity detection)
-        // Default disabled to avoid over-filtering speech on some systems
-        const VAD_ENABLED = false;
-        const VAD_THRESHOLD = 0.0005; // tune if needed
-        function isAboveVAD(buf) {
-          if (!VAD_ENABLED) return true;
-          let sum = 0;
-          for (let i = 0; i < buf.length; i++) {
-            const v = buf[i];
-            sum += v * v;
-          }
-          const rms = Math.sqrt(sum / buf.length);
-          return rms > VAD_THRESHOLD;
-        }
-
-        function nextPow2(n) {
-          let p = 1; while (p < n) p <<= 1; return p;
-        }
-        
-        try {
-          // Try to use AudioWorklet (modern approach)
-          await ctx.audioWorklet.addModule('./audio-processor.js');
-          const workletNode = new AudioWorkletNode(ctx, 'audio-processor');
-          
-          workletNode.port.onmessage = (event) => {
-            if (event.data.type !== 'audioData') return;
-            const raw = event.data.buffer;
-            const length = event.data.length || 0;
-            const chunk = raw instanceof ArrayBuffer ? new Float32Array(raw, 0, length) : raw;
-            if (!isAboveVAD(chunk)) return;
-
-            if (window.__useExternalASR) {
-              // Stream-only in external ASR mode; avoid extra buffering to reduce latency
-              try { window.electronAPI.asrSendChunkF32(raw instanceof ArrayBuffer ? raw : chunk.buffer); } catch {}
-            } else {
-              // Legacy path (WASM)
-              audioChunks.push(chunk);
-              totalQueuedSamples += chunk.length;
-              recentChunks.push(chunk);
-              recentSamples += chunk.length;
-              while (recentSamples > maxRecentSamples && recentChunks.length > 0) {
-                const removed = recentChunks.shift();
-                recentSamples -= removed.length;
-              }
-            }
-          };
-          
-          src.connect(workletNode);
-          useAudioWorklet = true;
-          console.log('Using AudioWorklet for optimized audio processing');
-          
-          // Update UI to show AudioWorklet is being used
-          requestAnimationFrame(() => {
-            const perfWorklet = document.getElementById('perf-worklet');
-            if (perfWorklet) perfWorklet.textContent = 'AudioWorklet (Optimized)';
-          });
-          
-        } catch (error) {
-          console.log('AudioWorklet not available, using optimized ScriptProcessor');
-          // Fallback to optimized ScriptProcessor
-          const proc = ctx.createScriptProcessor(4096, 1, 1);
-          
-          proc.onaudioprocess = e => {
-            const chunk = e.inputBuffer.getChannelData(0).slice(); // copy
-            if (!isAboveVAD(chunk)) return;
-            if (window.__useExternalASR) {
-              try { window.electronAPI.asrSendChunkF32(chunk.buffer); } catch {}
-            } else {
-              audioChunks.push(chunk);
-              totalQueuedSamples += chunk.length;
-              recentChunks.push(chunk);
-              recentSamples += chunk.length;
-              while (recentSamples > maxRecentSamples && recentChunks.length > 0) {
-                const removed = recentChunks.shift();
-                recentSamples -= removed.length;
-              }
-            }
-          };
-          
-          src.connect(proc);
-          // Prevent echo while keeping processor active
-          const silentGain = ctx.createGain();
-          silentGain.gain.value = 0;
-          proc.connect(silentGain);
-          silentGain.connect(ctx.destination);
-          
-          // Update UI to show fallback is being used
-          requestAnimationFrame(() => {
-            const perfWorklet = document.getElementById('perf-worklet');
-            if (perfWorklet) perfWorklet.textContent = 'ScriptProcessor (Fallback)';
-          });
-        }
-
-        // Use adaptive processing with dynamic intervals
-        let processingTimer;
-        
-        function scheduleNextProcessing() {
-          const interval = getOptimalInterval();
-          processingTimer = setTimeout(() => {
-            const processingStartTime = performance.now();
-            
-            if (!window.__useExternalASR && (typeof instId !== 'undefined' && instId) && totalQueuedSamples > 0 && recentSamples > 0) {
-              // Reuse pooled buffer sized to recent window
-              if (!combinedBufferPool || combinedBufferCapacity < recentSamples) {
-                combinedBufferCapacity = nextPow2(recentSamples);
-                combinedBufferPool = new Float32Array(combinedBufferCapacity);
-              }
-
-              let offset = 0;
-              for (let i = 0; i < recentChunks.length; i++) {
-                const chunk = recentChunks[i];
-                combinedBufferPool.set(chunk, offset);
-                offset += chunk.length;
-              }
-
-              // Feed last N seconds to Whisper to preserve sentence context
-              Module.set_audio(instId, combinedBufferPool.subarray(0, recentSamples));
-              // Mark new samples processed; keep recentChunks for context across ticks
-              audioChunks.length = 0;
-              totalQueuedSamples = 0;
-            }
-            
-            // Poll for transcript (WASM mode only)
-            const txt = window.__useExternalASR ? '' : ((typeof instId !== 'undefined' && instId) ? Module.get_transcribed() : '');
-          if (!window.__useExternalASR && txt) {
-              const processingTime = performance.now() - processingStartTime;
-              updatePerformanceStats(processingTime);
-              
-              // De-duplicate and only append new suffix
-              window.__lastWhisperText = window.__lastWhisperText || '';
-              let newText = txt;
-              if (txt.startsWith(window.__lastWhisperText)) {
-                newText = txt.slice(window.__lastWhisperText.length);
-              } else {
-                const prev = window.__lastWhisperText;
-                let overlap = 0;
-                const maxOverlap = Math.min(prev.length, txt.length);
-                for (let k = maxOverlap; k > 0; k--) {
-                  if (prev.endsWith(txt.slice(0, k))) { overlap = k; break; }
-                }
-                newText = txt.slice(overlap);
-              }
-              window.__lastWhisperText = txt;
-
-              if (newText && newText.trim().length > 0) {
-                const segmentId = transcriptBuffer.addTranscriptSegment(newText, new Date());
-                // Persist transcript segment
-                try {
-                  if (currentSessionId && window.electronAPI?.sessionAppendTranscript) {
-                    window.electronAPI.sessionAppendTranscript(currentSessionId, {
-                      id: segmentId,
-                      text: newText,
-                      confidence: 1.0
-                    });
-                  }
-                } catch (e) { console.warn('Append transcript failed', e); }
-              }
-
-              // Schedule DOM updates to avoid blocking
-              scheduleTranscriptUpdate();
-
-              // Log for debugging (non-blocking)
-              requestAnimationFrame(() => {
-                logsEl.textContent += '>> ' + txt + '\n';
-                logsEl.scrollTop = logsEl.scrollHeight;
-              });
-
-              // Schedule analysis asynchronously
-              setTimeout(() => {
-                try {
-                  checkAndTriggerAnalysis();
-                } catch (error) {
-                  console.error('Error in analysis trigger:', error);
-                }
-              }, 0);
-            }
-            
-            // Schedule next processing cycle
-            scheduleNextProcessing();
-          }, interval);
-        }
-        
-        // Start adaptive processing
-        window._int = { 
-          clear: () => clearTimeout(processingTimer),
-          start: scheduleNextProcessing
-        };
-        window._int.start();
-
-        // Start external ASR session if available
-        if (window.__useExternalASR) {
-          try {
-            window.electronAPI.asrStart({ sampleRate: ctx.sampleRate, window: 5, updateMs: 5000 });
-            const statusEl = document.getElementById('status');
-            if (statusEl) statusEl.textContent = 'Using external ASR…';
-          } catch (e) { console.warn('ASR start failed', e); }
-        }
-      }).catch(error => {
-        console.error('Error accessing microphone:', error);
-        statusEl.textContent = 'Microphone access denied or failed';
-        alert('Microphone access is required for recording. Please allow microphone access and try again.');
-      });
-    };
-
-    // Function to update transcript display
-    function updateTranscriptDisplay() {
-      const fullTranscript = transcriptBuffer.getFullContext();
-      transcriptEl.textContent = fullTranscript;
-
-      // Auto-scroll to bottom
-      transcriptEl.scrollTop = transcriptEl.scrollHeight;
-    }
-
-    // Optimized DOM update scheduling to prevent blocking
-    let pendingTranscriptUpdate = null;
-    let lastRenderedSegmentCount = 0;
-    function scheduleTranscriptUpdate() {
-      if (!pendingTranscriptUpdate) {
-        pendingTranscriptUpdate = requestAnimationFrame(() => {
-          const total = transcriptBuffer.getSegmentCount ? transcriptBuffer.getSegmentCount() : 0;
-          if (total && total > lastRenderedSegmentCount) {
-            const newCount = total - lastRenderedSegmentCount;
-            const recent = transcriptBuffer.getRecentSegments(newCount);
-            const appended = recent.map(s => s.text).join(' ');
-            transcriptEl.textContent = transcriptEl.textContent
-              ? (transcriptEl.textContent + ' ' + appended)
-              : appended;
-            lastRenderedSegmentCount = total;
-          } else if (total === 0) {
-            transcriptEl.textContent = '';
-            lastRenderedSegmentCount = 0;
-          }
-          transcriptEl.scrollTop = transcriptEl.scrollHeight;
-          pendingTranscriptUpdate = null;
-        });
-      }
-    }
-
-    // Hook ASR messages from main (external ASR)
-    if (window.electronAPI?.onASRMessage) {
-      window.electronAPI.onASRMessage((msg) => {
-        if (!msg || !msg.op) return;
-        if (msg.op === 'error') {
-          // Log error but do not fallback to Whisper
-          const logsEl = document.getElementById('logs');
-          if (logsEl) {
-            logsEl.textContent += `[ASR error] ${msg.message || 'unknown error'}\n`;
-            logsEl.scrollTop = logsEl.scrollHeight;
-          }
-          const statusEl = document.getElementById('status');
-          if (statusEl) statusEl.textContent = 'External ASR error (see logs)';
-          return;
-        }
-        if (msg.op === 'status') {
-          const logsEl = document.getElementById('logs');
-          if (logsEl && msg.message) {
-            logsEl.textContent += String(msg.message);
-            logsEl.scrollTop = logsEl.scrollHeight;
-          }
-          return;
-        }
-        if (msg.op === 'partial' || msg.op === 'final') {
-          const statusEl = document.getElementById('status');
-          if (statusEl) statusEl.textContent = 'External ASR streaming…';
-          const full = String(msg.text || '');
-          if (!full) return;
-          // Trivial prefix-based delta like test.py
-          window.__lastExtFull = window.__lastExtFull || '';
-          let delta = full;
-          if (full.startsWith(window.__lastExtFull)) {
-            delta = full.slice(window.__lastExtFull.length);
-          }
-          window.__lastExtFull = full;
-          if (!delta) return;
-          const segmentId = transcriptBuffer.addTranscriptSegment(delta, new Date());
-          try {
-            if (currentSessionId && window.electronAPI?.sessionAppendTranscript) {
-              window.electronAPI.sessionAppendTranscript(currentSessionId, {
-                id: segmentId,
-                text: delta,
-                confidence: 1.0
-              });
-            }
-          } catch (_) {}
-          scheduleTranscriptUpdate();
-          setTimeout(() => { try { checkAndTriggerAnalysis(); } catch {} }, 0);
-        }
-      });
-    }
-
-    // Track last analysis time to prevent too frequent analysis
-    let lastAnalysisTime = 0;
-    const MIN_ANALYSIS_INTERVAL = 10000; // 10 seconds minimum between analyses
-
-    // Performance monitoring for transcription
-    let audioProcessingStats = {
-      chunksProcessed: 0,
-      totalAudioTime: 0,
-      averageLatency: 0,
-      lastProcessTime: 0,
-      adaptiveInterval: 1500 // Start with 1.5 seconds
-    };
-
-    function updatePerformanceStats(processingTime) {
-      audioProcessingStats.chunksProcessed++;
-      audioProcessingStats.totalAudioTime += processingTime;
-      audioProcessingStats.averageLatency = audioProcessingStats.totalAudioTime / audioProcessingStats.chunksProcessed;
-      audioProcessingStats.lastProcessTime = Date.now();
-      
-      // Adaptive interval adjustment based on performance
-      if (audioProcessingStats.averageLatency < 100) {
-        // Fast processing - can handle more frequent updates
-        audioProcessingStats.adaptiveInterval = Math.max(1000, audioProcessingStats.adaptiveInterval - 50);
-      } else if (audioProcessingStats.averageLatency > 500) {
-        // Slow processing - reduce frequency to prevent overload
-        audioProcessingStats.adaptiveInterval = Math.min(3000, audioProcessingStats.adaptiveInterval + 100);
-      }
-      
-      // Update UI performance indicators
-      requestAnimationFrame(() => {
-        const perfLatency = document.getElementById('perf-latency');
-        const perfInterval = document.getElementById('perf-interval');
-        const perfChunks = document.getElementById('perf-chunks');
-        const perfStats = document.getElementById('performance-stats');
-        
-        if (perfLatency) perfLatency.textContent = `${audioProcessingStats.averageLatency.toFixed(1)}ms`;
-        if (perfInterval) perfInterval.textContent = `${audioProcessingStats.adaptiveInterval}ms`;
-        if (perfChunks) perfChunks.textContent = audioProcessingStats.chunksProcessed;
-        if (perfStats) perfStats.style.display = 'block';
-      });
-      
-      // Log performance every 10 chunks
-      if (audioProcessingStats.chunksProcessed % 10 === 0) {
-        console.log(`Audio processing stats: ${audioProcessingStats.chunksProcessed} chunks, avg latency: ${audioProcessingStats.averageLatency.toFixed(2)}ms, interval: ${audioProcessingStats.adaptiveInterval}ms`);
-      }
-    }
-
-    // Function to get optimal processing interval
-    function getOptimalInterval() {
-      return audioProcessingStats.adaptiveInterval;
-    }
-
-    // Check if analysis should be triggered based on content and settings
-    function checkAndTriggerAnalysis() {
-      console.log('checkAndTriggerAnalysis called');
-
-      if (!analysisEngine) {
-        console.log('Analysis engine not initialized');
-        return;
-      }
-
-      if (!analysisEngine.isRunning) {
-        console.log('Analysis engine not running');
-        return;
-      }
-
-      const settings = settingsManager ? settingsManager.getSettings() : {};
-      if (!settings.enableAutoAnalysis) {
-        console.log('Auto-analysis disabled in settings');
-        return;
-      }
-
-      // Don't trigger if analysis is already in progress
-      if (analysisInProgress) {
-        console.log('Analysis already in progress');
-        return;
-      }
-
-      // Prevent too frequent analysis to avoid overwhelming the system
-      const now = Date.now();
-      if (now - lastAnalysisTime < MIN_ANALYSIS_INTERVAL) {
-        console.log('Analysis triggered too recently, skipping');
-        return;
-      }
-
-      // Check if we have enough unanalyzed content
-      const unanalyzedSegments = transcriptBuffer.getUnanalyzedSegments(settings.minTranscriptLength || 100);
-      console.log(`Found ${unanalyzedSegments.length} unanalyzed segments`);
-
-      if (unanalyzedSegments.length === 0) {
-        console.log('No unanalyzed segments available');
-        return;
-      }
-
-      const unanalyzedText = unanalyzedSegments.map(s => s.text).join(' ');
-      console.log(`Unanalyzed text length: ${unanalyzedText.length}`);
-
-      if (unanalyzedText.length < (settings.minTranscriptLength || 100)) {
-        console.log('Not enough unanalyzed text for analysis');
-        return;
-      }
-
-      console.log('Triggering automatic analysis');
-      lastAnalysisTime = now;
-
-      // Actually trigger the analysis (non-blocking)
-      analysisEngine.triggerAnalysis({
-        force: false,
-        types: ['summary', 'suggestions'],
-        automatic: true
-      }).catch(error => {
-        console.error('Automatic analysis failed:', error);
-      });
-    }
-
-    // Function to clear transcript buffer and display
-    function clearTranscriptSession() {
-      transcriptBuffer.clearBuffer();
-      transcriptEl.textContent = '';
-      lastRenderedSegmentCount = 0;
-
-      // Reset analysis engine session
-      if (analysisEngine) {
-        analysisEngine.resetSession();
-      }
-
-      // Clear insights when starting new session
-      clearInsights();
-      updateAnalysisStatus('ready', 'Ready');
-    }
-
-    // Expose transcript buffer globally for analysis components
-    window.transcriptBuffer = transcriptBuffer;
-
-    // Expose activity functions globally
-    window.executeActivity = executeActivity;
-
-    // Utility functions for analysis components
-    window.getTranscriptForAnalysis = function (minLength = 100) {
-      return transcriptBuffer.getUnanalyzedSegments(minLength);
-    };
-
-    window.markTranscriptAnalyzed = function (segmentIds) {
-      transcriptBuffer.markSegmentsAnalyzed(segmentIds);
-    };
-
-    window.getFullTranscriptContext = function (fromTime = null, toTime = null) {
-      return transcriptBuffer.getFullContext(fromTime, toTime);
-    };
-
-    document.getElementById('btn-stop').onclick = () => {
-      // Handle both old and new timer structures
-      if (window._int) {
-        if (typeof window._int.clear === 'function') {
-          window._int.clear();
-        } else {
-          clearInterval(window._int);
-        }
-      }
-      // Stop external ASR streaming (helper stays running)
-      try { if (window.electronAPI?.asrStop) window.electronAPI.asrStop(); } catch {}
-      
-      // Free WASM only if it was initialized
-      try { if (typeof Module !== 'undefined' && instId) Module.free(instId); } catch {}
-      statusEl.textContent = 'Stopped';
-      document.getElementById('btn-stop').disabled = true;
-
-      // Stop analysis engine
-      if (analysisEngine && analysisEngine.isRunning) {
-        analysisEngine.stop();
-      }
-
-      // Clear transcript session when stopping
-      clearTranscriptSession();
-      // End local storage session
-      try {
-        if (currentSessionId && window.electronAPI?.sessionEnd) {
-          window.electronAPI.sessionEnd(currentSessionId, { endedAt: new Date().toISOString() });
-        }
-      } catch (e) { console.warn('Session end failed', e); }
-      currentSessionId = null;
-      
-      // Reset performance stats
-      audioProcessingStats = {
-        chunksProcessed: 0,
-        totalAudioTime: 0,
-        averageLatency: 0,
-        lastProcessTime: 0,
-        adaptiveInterval: 1500
-      };
-    };
-
-    // Sessions viewer state
-    let sessionsCache = [];
-    let selectedSessionId = null;
-
-    sessionsBtnEl.onclick = () => openSessionsViewer();
-    goProBtnEl.onclick = () => openLicenseModal();
-
-    async function openSessionsViewer() {
-      try {
-        const list = await window.electronAPI.listSessions();
-        sessionsCache = list || [];
-        renderSessionsList();
-        document.getElementById('sessions-overlay').classList.add('active');
-        if (sessionsCache.length > 0) {
-          loadSessionDetails(sessionsCache[0].id);
-        }
-        // Update Pro gating on final summary button
-        try {
-          const lic = await window.electronAPI.getLicenseStatus();
-          const btn = document.getElementById('btn-generate-final');
-          if (btn) {
-            if (lic?.valid) { btn.disabled = false; btn.textContent = 'Generate Final Summary'; }
-            else { btn.disabled = false; btn.textContent = 'Generate Final Summary (Pro)'; }
-          }
-        } catch (_) {}
-      } catch (e) {
-        console.error('Failed to load sessions', e);
-      }
-    }
-
-    function closeSessionsViewer() {
-      document.getElementById('sessions-overlay').classList.remove('active');
-    }
-
-    function renderSessionsList() {
-      const listEl = document.getElementById('sessions-list');
-      if (!sessionsCache.length) {
-        listEl.innerHTML = '<div class="session-meta">No sessions yet</div>';
-        return;
-      }
-      listEl.innerHTML = sessionsCache.map(s => `
-        <div class="session-item ${selectedSessionId===s.id?'active':''}" onclick="loadSessionDetails('${s.id}')">
-          <div class="session-title">${s.id}</div>
-          <div class="session-meta">${s.createdAt ? new Date(s.createdAt).toLocaleString() : ''}${s.endedAt ? ' – Ended' : ' – Active'}</div>
-        </div>
-      `).join('');
-    }
-
-    window.loadSessionDetails = async function(id) {
-      try {
-        selectedSessionId = id;
-        renderSessionsList();
-        const data = await window.electronAPI.getSession(id);
-        if (!data) return;
-
-        // Final summary if present
-        const final = (data.analysis || []).find(e => e.type === 'final-summary');
-        const finalBox = document.getElementById('final-summary-box');
-        if (final && final.summary) {
-          finalBox.style.display = 'block';
-          finalBox.textContent = typeof final.summary === 'string' ? final.summary : JSON.stringify(final.summary);
-          document.getElementById('btn-generate-final').disabled = true;
-        } else {
-          finalBox.style.display = 'none';
-          document.getElementById('btn-generate-final').disabled = false;
-        }
-
-        // Summaries
-        const summaries = (data.analysis || []).filter(e => e.type === 'summary');
-        document.getElementById('viewer-summaries').textContent = summaries.length
-          ? summaries.map(s => (s.summary?.content || s.summary || '')).join('\n\n')
-          : 'No summaries yet.';
-
-        // Suggestions
-        const suggestions = (data.analysis || []).filter(e => e.type === 'suggestions');
-        document.getElementById('viewer-suggestions').textContent = suggestions.length
-          ? suggestions.map(s => JSON.stringify(s.suggestions)).join('\n\n')
-          : 'No suggestions yet.';
-
-        // Activities
-        const activities = (data.analysis || []).filter(e => e.type === 'activities');
-        document.getElementById('viewer-activities').textContent = activities.length
-          ? activities.map(a => (a.activities || []).join('\n')).join('\n\n')
-          : 'No activities yet.';
-
-        // Transcript
-        const transcriptText = (data.transcript || []).map(t => t.text).join(' ');
-        document.getElementById('viewer-transcript').textContent = transcriptText || 'No transcript.';
-      } catch (e) {
-        console.error('Failed to load session details', e);
-      }
-    }
-
-    window.generateFinalSummary = async function() {
-      if (!selectedSessionId) return;
-      const lic = await window.electronAPI.getLicenseStatus();
-      if (!lic?.valid) { openLicenseModal('Pro required for Final Summary'); return; }
-      try {
-        const data = await window.electronAPI.getSession(selectedSessionId);
-        const transcriptText = (data.transcript || []).map(t => t.text).join(' ');
-        if (!transcriptText || transcriptText.length < 50) return;
-
-        // Send a dedicated analysis request for final summary
-        const reqId = 'final_' + Math.random().toString(36).slice(2,8);
-        window.electronAPI.sendAnalysisRequest({
-          id: reqId,
-          type: 'analyze-transcript',
-          transcript: transcriptText,
-          analysisType: ['summary']
-        });
-
-        const handler = (evt) => {
-          const msg = evt.data;
-          if (msg.id !== reqId) return;
-          if (msg.type === 'analysis-response' && msg.results?.summary) {
-            // Persist
-            window.electronAPI.sessionAppendAnalysis(selectedSessionId, {
-              type: 'final-summary',
-              summary: msg.results.summary
-            });
-            // Update UI
-            const finalBox = document.getElementById('final-summary-box');
-            finalBox.style.display = 'block';
-            finalBox.textContent = msg.results.summary;
-            document.getElementById('btn-generate-final').disabled = true;
-            window.electronAPI.onAnalysisResponse(() => {}); // no-op to avoid leak
-          }
-        };
-        window.electronAPI.onAnalysisResponse(handler);
-      } catch (e) {
-        console.error('Failed to generate final summary', e);
-      }
-    }
-
-    // Search (Pro)
-    async function runSearch() {
-      const query = document.getElementById('search-input').value.trim();
-      const resultsEl = document.getElementById('search-results');
-      if (!query) { resultsEl.style.display='none'; resultsEl.textContent=''; return; }
-      const lic = await window.electronAPI.getLicenseStatus();
-      if (!lic?.valid) { openLicenseModal('Pro required for search'); return; }
-      const res = await window.electronAPI.searchSessions(query, { limit: 100, caseSensitive: false });
-      if (!res?.success) { resultsEl.style.display='block'; resultsEl.textContent = `Search failed: ${res?.error||'Unknown'}`; return; }
-      if (!res.results.length) { resultsEl.style.display='block'; resultsEl.textContent = 'No matches found.'; return; }
-      const lines = res.results.map(r => `${r.sessionId} ${r.ts?('['+new Date(r.ts).toLocaleString()+'] '):''}- ${r.text}`).join('\n');
-      resultsEl.style.display='block';
-      resultsEl.textContent = lines;
-    }
-
-    // License modal
-    function openLicenseModal(message = null) {
-      const overlay = document.getElementById('license-overlay');
-      document.getElementById('license-status').textContent = message || 'Enter your license key';
-      overlay.classList.add('active');
-    }
-    function closeLicenseModal() {
-      document.getElementById('license-overlay').classList.remove('active');
-    }
-    async function submitLicense() {
-      const key = document.getElementById('license-input').value;
-      const res = await window.electronAPI.setLicenseKey(key);
-      const status = document.getElementById('license-status');
-      if (res.success) { status.textContent = 'License activated. Enjoy Pro features!'; }
-      else { status.textContent = `Activation failed: ${res.error}`; }
-    }
-    async function clearLicense() {
-      await window.electronAPI.clearLicense();
-      document.getElementById('license-status').textContent = 'License cleared. Back to Free.';
-    }
-
-    // Panel Management - Initialize first
-    const panelStates = {
-      transcript: false,
-      reminders: false,
-      llm: false,
-      insights: false,
-      logs: true // Start collapsed
-    };
-
-    let currentSummaries = [];
-    let currentSuggestions = [];
-    let analysisInProgress = false;
-
-    // DOM elements for insights - Initialize after DOM is ready
-    let statusIndicator, statusText, summaryTimeline, suggestionsContainer;
-    let manualSummaryTrigger, manualSuggestionsTrigger;
-
-    // Initialize DOM elements when page loads
-    document.addEventListener('DOMContentLoaded', () => {
-      try {
-        statusIndicator = document.getElementById('analysis-status-indicator');
-        statusText = document.getElementById('analysis-status-text');
-        summaryTimeline = document.getElementById('summary-timeline');
-        suggestionsContainer = document.getElementById('suggestions-container');
-        manualSummaryTrigger = document.getElementById('manual-summary-trigger');
-        manualSuggestionsTrigger = document.getElementById('manual-suggestions-trigger');
-
-        // Check if all elements were found
-        if (!statusIndicator || !statusText || !summaryTimeline || !suggestionsContainer) {
-          console.error('Some DOM elements for insights panel not found');
-          return;
-        }
-
-        // Initialize insights panel
-        updateAnalysisStatus('ready', 'Ready');
-
-
-
-        console.log('Insights panel DOM elements initialized');
-      } catch (error) {
-        console.error('Failed to initialize insights panel DOM elements:', error);
-      }
-    });
-
-    // LLM functionality
-    let nextId = 1, cbs = {};
-    let activeMCPCalls = new Map(); // Track active MCP tool calls
-
-    // MCP Tool Indicator Functions
-    function displayResponseWithMCPIndicators(response, mcpToolsUsed, messageId) {
-      const answerEl = document.getElementById('answer');
-      if (!answerEl) return;
-
-      // Create container for MCP indicators and response
-      const container = document.createElement('div');
-      
-      // Add MCP tool indicators
-      if (mcpToolsUsed && mcpToolsUsed.length > 0) {
-        const indicatorsContainer = document.createElement('div');
-        indicatorsContainer.className = 'mcp-tool-indicators';
-        
-        mcpToolsUsed.forEach((tool, index) => {
-          const indicator = createMCPToolIndicator(tool, messageId, index);
-          indicatorsContainer.appendChild(indicator);
-        });
-        
-        container.appendChild(indicatorsContainer);
-      }
-
-      // Add response content
-      const responseContent = document.createElement('div');
-      responseContent.className = 'mcp-response-content';
-      responseContent.textContent = response;
-      container.appendChild(responseContent);
-
-      // Replace answer content
-      answerEl.innerHTML = '';
-      answerEl.appendChild(container);
-    }
-
-    function createMCPToolIndicator(tool, messageId, index) {
-      const indicator = document.createElement('div');
-      indicator.className = 'mcp-tool-indicator';
-      indicator.onclick = () => toggleMCPToolDetails(messageId, index);
-
-      // Tool icon
-      const icon = document.createElement('div');
-      icon.className = 'mcp-tool-icon';
-      indicator.appendChild(icon);
-
-      // Tool name
-      const name = document.createElement('span');
-      name.textContent = tool.name || 'Unknown Tool';
-      indicator.appendChild(name);
-
-      // Create details panel (hidden by default)
-      const details = document.createElement('div');
-      details.className = 'mcp-tool-details';
-      details.id = `mcp-details-${messageId}-${index}`;
-      
-      const header = document.createElement('div');
-      header.className = 'mcp-tool-details-header';
-      header.textContent = `${tool.name} (${tool.serverId})`;
-      details.appendChild(header);
-
-      if (tool.parameters) {
-        const paramsLabel = document.createElement('div');
-        paramsLabel.textContent = 'Parameters:';
-        details.appendChild(paramsLabel);
-        
-        const params = document.createElement('div');
-        params.className = 'mcp-tool-params';
-        params.textContent = JSON.stringify(tool.parameters, null, 2);
-        details.appendChild(params);
-      }
-
-      if (tool.result) {
-        const resultLabel = document.createElement('div');
-        resultLabel.textContent = 'Result:';
-        resultLabel.style.marginTop = '6px';
-        details.appendChild(resultLabel);
-        
-        const result = document.createElement('div');
-        result.className = 'mcp-tool-params';
-        result.textContent = typeof tool.result === 'string' ? tool.result : JSON.stringify(tool.result, null, 2);
-        details.appendChild(result);
-      }
-
-      if (tool.error) {
-        const errorLabel = document.createElement('div');
-        errorLabel.textContent = 'Error:';
-        errorLabel.style.marginTop = '6px';
-        errorLabel.style.color = '#f44336';
-        details.appendChild(errorLabel);
-        
-        const error = document.createElement('div');
-        error.className = 'mcp-tool-params';
-        error.style.color = '#f44336';
-        error.textContent = tool.error;
-        details.appendChild(error);
-      }
-
-      indicator.appendChild(details);
-      return indicator;
-    }
-
-    function toggleMCPToolDetails(messageId, index) {
-      const details = document.getElementById(`mcp-details-${messageId}-${index}`);
-      if (details) {
-        details.classList.toggle('active');
-      }
-    }
-
-    function showMCPToolLoading(toolName, serverId) {
-      const answerEl = document.getElementById('answer');
-      if (!answerEl) return;
-
-      const loadingIndicator = document.createElement('div');
-      loadingIndicator.className = 'mcp-tool-loading';
-      loadingIndicator.id = `mcp-loading-${toolName}`;
-
-      const spinner = document.createElement('div');
-      spinner.className = 'loading-spinner';
-      loadingIndicator.appendChild(spinner);
-
-      const text = document.createElement('span');
-      text.textContent = `Calling ${toolName} on ${serverId}...`;
-      loadingIndicator.appendChild(text);
-
-      // Add to existing content or create new
-      if (answerEl.textContent === 'Thinking...') {
-        answerEl.innerHTML = '';
-      }
-      answerEl.appendChild(loadingIndicator);
-    }
-
-    function hideMCPToolLoading(toolName) {
-      const loadingEl = document.getElementById(`mcp-loading-${toolName}`);
-      if (loadingEl) {
-        loadingEl.remove();
-      }
-    }
-
-    function showMCPToolError(toolName, serverId, error) {
-      const answerEl = document.getElementById('answer');
-      if (!answerEl) return;
-
-      const errorIndicator = document.createElement('div');
-      errorIndicator.className = 'mcp-tool-error';
-
-      const text = document.createElement('span');
-      text.textContent = `${toolName} failed: ${error}`;
-      errorIndicator.appendChild(text);
-
-      answerEl.appendChild(errorIndicator);
-    }
-
-    // Handle LLM responses
-    window.electronAPI.onResponse(msg => {
-      console.log('Received LLM response:', msg);
-      if (cbs[msg.id]) {
-        console.log('Found callback for ID:', msg.id);
-        
-        // Handle MCP tool indicators
-        if (msg.mcpToolsUsed && msg.mcpToolsUsed.length > 0) {
-          displayResponseWithMCPIndicators(msg.response, msg.mcpToolsUsed, msg.id);
-        } else {
-          cbs[msg.id](msg.error ? 'Error: ' + msg.error : msg.response);
-        }
-      } else {
-        console.log('No callback found for ID:', msg.id, 'Available callbacks:', Object.keys(cbs));
-      }
-    });
-
-    // Handle status messages from LLM worker
-    window.electronAPI.onStatus(msg => {
-      if (msg.type === 'status') {
-        modelStatusEl.textContent = msg.message;
-      }
-    });
-
-    // Handle MCP tool events
-    if (window.electronAPI.onMCPToolCall) {
-      window.electronAPI.onMCPToolCall((event) => {
-        console.log('MCP tool call event:', event);
-        
-        switch (event.type) {
-          case 'tool-call-start':
-            showMCPToolLoading(event.toolName, event.serverId);
-            break;
-          case 'tool-call-success':
-            hideMCPToolLoading(event.toolName);
-            break;
-          case 'tool-call-error':
-            hideMCPToolLoading(event.toolName);
-            showMCPToolError(event.toolName, event.serverId, event.error);
-            break;
-        }
-      });
-    }
-
-    // Handle model download status updates
-    window.electronAPI.onModelStatus(status => {
-      console.log('Model status update:', status);
-
-      // Update status message
-      modelStatusEl.textContent = status.message;
-
-      // Remove all status classes
-      modelStatusEl.classList.remove('error', 'success', 'warning');
-
-      // Handle different states
-      switch (status.state) {
-        case 'downloading':
-          // Show progress bar
-          progressContainerEl.classList.remove('hidden');
-          downloadBtnEl.classList.add('hidden');
-
-          // Update progress if available
-          if (status.progress !== undefined) {
-            const percent = Math.round(status.progress * 100);
-            progressBarEl.style.width = `${percent}%`;
-            progressBarEl.textContent = `${percent}%`;
-
-            // Add download size info if available
-            if (status.downloaded && status.totalSize) {
-              progressBarEl.textContent = `${percent}% (${status.downloaded}MB / ${status.totalSize}MB)`;
-            }
-          }
-
-          // Disable ask button during download
-          askBtnEl.disabled = true;
-          promptEl.disabled = true;
-          break;
-
-        case 'error':
-          // Show error and download button
-          modelStatusEl.classList.add('error');
-          progressContainerEl.classList.add('hidden');
-          downloadBtnEl.classList.remove('hidden');
-          downloadBtnEl.disabled = false;
-
-          // Disable ask button
-          askBtnEl.disabled = true;
-          promptEl.disabled = true;
-          break;
-
-        case 'ready':
-          // Show success message
-          modelStatusEl.classList.add('success');
-          progressContainerEl.classList.add('hidden');
-          downloadBtnEl.classList.add('hidden');
-
-          // Enable ask button
-          askBtnEl.disabled = false;
-          promptEl.disabled = false;
-
-          // Initialize analysis engine with LLM worker
-          initializeAnalysisEngineWithLLM();
-
-          // Set up performance monitoring
-          setupPerformanceMonitoring();
-          break;
-
-        case 'loading':
-          // Show loading message
-          modelStatusEl.classList.add('warning');
-          progressContainerEl.classList.add('hidden');
-          downloadBtnEl.classList.add('hidden');
-
-          // Disable ask button during loading
-          askBtnEl.disabled = true;
-          promptEl.disabled = true;
-          break;
-
-        default:
-          // For any other state
-          progressContainerEl.classList.add('hidden');
-      }
-    });
-
-    // Handle download button click
-    downloadBtnEl.onclick = () => {
-      window.electronAPI.downloadModel();
-      downloadBtnEl.disabled = true;
-      downloadBtnEl.textContent = 'Downloading...';
-    };
-
-    // Panel functionality
-
-    // Handle ask button click
-    document.getElementById('ask').onclick = () => {
-      const prm = document.getElementById('prompt').value.trim();
-      if (!prm) return;
-
-      document.getElementById('answer').textContent = 'Thinking...';
-      const currentId = nextId;
-      cbs[currentId] = res => {
-        document.getElementById('answer').textContent = res;
-        delete cbs[currentId]; // Clean up the callback
-      };
-
-      // Include transcript context with the chat request
-      const transcriptContext = transcriptBuffer.getFullContext();
-      window.electronAPI.sendPrompt(nextId++, prm, transcriptContext);
-    };
-
-    // DOM elements initialized above
-
-    // Toggle panel collapse/expand
-    function togglePanel(panelName) {
-      const content = document.getElementById(`${panelName}-content`);
-      const icon = document.getElementById(`${panelName}-collapse-icon`);
-
-      panelStates[panelName] = !panelStates[panelName];
-
-      if (panelStates[panelName]) {
-        content.classList.remove('collapsed');
-        icon.classList.remove('collapsed');
-      } else {
-        content.classList.add('collapsed');
-        icon.classList.add('collapsed');
-      }
-    }
-
-    // Expand panel in modal
-    function expandPanel(panelName, event) {
-      event.stopPropagation();
-
-      const modalOverlay = document.getElementById('modal-overlay');
-      const modalTitle = document.getElementById('modal-title');
-      const modalBody = document.getElementById('modal-body');
-
-      // Set modal title
-      const titles = {
-        transcript: '📝 Live Transcript - Expanded View',
-        reminders: '📅 Meeting Radar - Expanded View',
-        llm: '🧠 AI Chat - Expanded View',
-        insights: '🔍 AI Insights - Expanded View',
-        logs: '🔧 System Logs - Expanded View'
-      };
-
-      modalTitle.textContent = titles[panelName];
-
-      // Clone and expand content
-      const originalContent = document.getElementById(`${panelName}-content`);
-      const clonedContent = originalContent.cloneNode(true);
-
-      // Remove size restrictions for expanded view
-      const containers = clonedContent.querySelectorAll('.content-container');
-      containers.forEach(container => {
-        container.classList.add('expanded');
-      });
-
-      modalBody.innerHTML = '';
-      modalBody.appendChild(clonedContent);
-
-      // Show modal
-      modalOverlay.classList.add('active');
-      document.body.style.overflow = 'hidden';
-    }
-
-    // Close modal
-    function closeModal() {
-      const modalOverlay = document.getElementById('modal-overlay');
-      modalOverlay.classList.remove('active');
-      document.body.style.overflow = 'auto';
-    }
-
-    // Close modal on overlay click
-    document.getElementById('modal-overlay').onclick = (e) => {
-      if (e.target.id === 'modal-overlay') {
-        closeModal();
-      }
-    };
-
-    // Close modal on Escape key
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        closeModal();
-      }
-    });
-
-    // Update analysis status indicator
-    function updateAnalysisStatus(status, message) {
-      try {
-        if (statusIndicator && statusText) {
-          statusIndicator.className = `status-indicator ${status}`;
-          statusText.textContent = message;
-        }
-
-        // Update button states based on status
-        const isAnalyzing = status === 'analyzing';
-        if (manualSummaryTrigger) manualSummaryTrigger.disabled = isAnalyzing;
-        if (manualSuggestionsTrigger) manualSuggestionsTrigger.disabled = isAnalyzing;
-
-        analysisInProgress = isAnalyzing;
-      } catch (error) {
-        console.error('Error updating analysis status:', error);
-      }
-    }
-
-    // Trigger manual analysis
-    function triggerManualAnalysis(type) {
-      const transcript = transcriptBuffer.getFullContext();
-      if (!transcript || transcript.trim().length < 50) {
-        updateAnalysisStatus('error', 'Not enough content');
-        setTimeout(() => updateAnalysisStatus('ready', 'Ready'), 2000);
-        return;
-      }
-
-      if (type === 'activities') {
-        console.log('Manual activities trigger activated - triggering suggestions analysis');
-        // Activities are now part of suggestions analysis
-        type = 'suggestions';
-      }
-
-      if (!analysisEngine) {
-        updateAnalysisStatus('error', 'Analysis engine not initialized');
-        return;
-      }
-
-      if (analysisInProgress) {
-        return;
-      }
-
-      // Determine analysis types based on the trigger
-      let analysisTypes = [];
-      if (type === 'summary') {
-        analysisTypes = ['summary'];
-      } else if (type === 'suggestions') {
-        analysisTypes = ['suggestions'];
-      } else {
-        // Default to both if not specified
-        analysisTypes = ['summary', 'suggestions'];
-      }
-
-      // Trigger analysis with force option to bypass normal conditions
-      analysisEngine.triggerAnalysis({
-        force: true,
-        types: analysisTypes,
-        manual: true
-      }).catch(error => {
-        console.error('Manual analysis failed:', error);
-        updateAnalysisStatus('error', `Analysis failed: ${error.message}`);
-        setTimeout(() => updateAnalysisStatus('ready', 'Ready'), 3000);
-      });
-    }
-
-
-
-    // Add a summary to the timeline
-    function addSummary(summary) {
-      currentSummaries.push(summary);
-      renderSummaryTimeline();
-      // Persist summary event
-      try {
-        if (currentSessionId && window.electronAPI?.sessionAppendAnalysis) {
-          window.electronAPI.sessionAppendAnalysis(currentSessionId, {
-            type: 'summary',
-            summary
-          });
-        }
-      } catch (e) { console.warn('Append summary failed', e); }
-    }
-
-    // Add suggestions
-    function addSuggestions(suggestions) {
-      currentSuggestions = suggestions;
-      renderSuggestions();
-      // Persist suggestions event
-      try {
-        if (currentSessionId && window.electronAPI?.sessionAppendAnalysis) {
-          window.electronAPI.sessionAppendAnalysis(currentSessionId, {
-            type: 'suggestions',
-            suggestions
-          });
-        }
-      } catch (e) { console.warn('Append suggestions failed', e); }
-    }
-
-    // Add activities
-    function addActivities(activities) {
-      currentActivities.push(...activities);
-      renderActivities(activities);
-      // Persist activities event
-      try {
-        if (currentSessionId && window.electronAPI?.sessionAppendAnalysis) {
-          window.electronAPI.sessionAppendAnalysis(currentSessionId, {
-            type: 'activities',
-            activities
-          });
-        }
-      } catch (e) { console.warn('Append activities failed', e); }
-    }
-
-
-
-    // Render summary timeline
-    function renderSummaryTimeline() {
-      if (currentSummaries.length === 0) {
-        summaryTimeline.innerHTML = '<div class="empty-state">No summaries yet. Start transcribing to generate insights.</div>';
-        return;
-      }
-
-      const summariesHtml = currentSummaries.map(summary => `
-        <div class="summary-item">
-          <div class="summary-header">
-            <span class="summary-time">${formatTime(summary.timestamp)}</span>
-          </div>
-          <div class="summary-content">${summary.content}</div>
-        </div>
-      `).join('');
-
-      summaryTimeline.innerHTML = summariesHtml;
-      summaryTimeline.scrollTop = summaryTimeline.scrollHeight;
-
-      // Update modal if open
-      updateModalContent();
-    }
-
-    // Render suggestions
-    function renderSuggestions() {
-      if (currentSuggestions.length === 0) {
-        suggestionsContainer.innerHTML = '<div class="empty-state">No suggestions available. Continue the conversation for AI recommendations.</div>';
-        return;
-      }
-
-      // Group suggestions by category
-      const groupedSuggestions = currentSuggestions.reduce((groups, suggestion) => {
-        if (!groups[suggestion.type]) {
-          groups[suggestion.type] = [];
-        }
-        groups[suggestion.type].push(suggestion);
-        return groups;
-      }, {});
-
-      const categoryNames = {
-        'action-item': 'Action Items',
-        'question': 'Questions',
-        'topic': 'Topics',
-        'resource': 'Resources'
-      };
-
-      const suggestionsHtml = Object.entries(groupedSuggestions).map(([type, suggestions]) => `
-        <div class="suggestion-category">
-          <div class="category-header">${categoryNames[type] || type}</div>
-          ${suggestions.map(suggestion => `
-            <div class="suggestion-item">
-              <div class="suggestion-content">${suggestion.content}</div>
-              <div class="suggestion-priority ${suggestion.priority}">${suggestion.priority}</div>
-            </div>
-          `).join('')}
-        </div>
-      `).join('');
-
-      suggestionsContainer.innerHTML = suggestionsHtml;
-
-      // Update modal if open
-      updateModalContent();
-    }
-
-    // Update modal content if it's currently open
-    function updateModalContent() {
-      const modalOverlay = document.getElementById('modal-overlay');
-      if (modalOverlay.classList.contains('active')) {
-        const modalTitle = document.getElementById('modal-title').textContent;
-        if (modalTitle.includes('Insights')) {
-          // Re-expand the insights panel to update modal content
-          const originalContent = document.getElementById('insights-content');
-          const modalBody = document.getElementById('modal-body');
-          const clonedContent = originalContent.cloneNode(true);
-
-          const containers = clonedContent.querySelectorAll('.content-container');
-          containers.forEach(container => {
-            container.classList.add('expanded');
-          });
-
-          modalBody.innerHTML = '';
-          modalBody.appendChild(clonedContent);
-        }
-      }
-    }
-
-    // Clear all insights
-    function clearInsights() {
-      currentSummaries = [];
-      currentSuggestions = [];
-      clearActivities();
-      renderSummaryTimeline();
-      renderSuggestions();
-      updateAnalysisStatus('ready', 'Ready');
-    }
-
-    // Export insights
-    function exportInsights() {
-      const data = {
-        timestamp: new Date().toISOString(),
-        summaries: currentSummaries,
-        suggestions: currentSuggestions,
-        activities: currentActivities,
-        transcript: transcriptBuffer.getFullContext()
-      };
-
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `insights-${new Date().toISOString().split('T')[0]}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    }
-
-    // Format timestamp for display
-    function formatTime(timestamp) {
-      return new Date(timestamp).toLocaleTimeString([], {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
-      });
-    }
-
-
-
-    // Insights panel initialized in DOMContentLoaded
-
-    // Initialize analysis components
-    function initializeAnalysisComponents() {
-      try {
-        // Check if required classes are available
-        if (typeof SummaryGenerator === 'undefined') {
-          throw new Error('SummaryGenerator class not found');
-        }
-        if (typeof SuggestionGenerator === 'undefined') {
-          throw new Error('SuggestionGenerator class not found');
-        }
-        if (typeof AnalysisEngine === 'undefined') {
-          throw new Error('AnalysisEngine class not found');
-        }
-
-        // Initialize generators
-        summaryGenerator = new SummaryGenerator();
-        suggestionGenerator = new SuggestionGenerator();
-
-        // Initialize analysis engine with default settings
-        const settings = settingsManager ? settingsManager.getAnalysisEngineSettings() : {};
-        analysisEngine = new AnalysisEngine(settings);
-
-        // Set up analysis engine event handlers
-        setupAnalysisEngineEvents();
-
-        console.log('Analysis components initialized successfully');
-      } catch (error) {
-        console.error('Failed to initialize analysis components:', error);
-        // Don't call updateAnalysisStatus here as DOM elements might not be ready
-        setTimeout(() => {
-          if (typeof updateAnalysisStatus === 'function') {
-            updateAnalysisStatus('error', 'Initialization failed');
-          }
-        }, 100);
-      }
-    }
-
-    // Set up analysis engine event handlers
-    function setupAnalysisEngineEvents() {
-      if (!analysisEngine) return;
-
-      analysisEngine.on('analysisStarted', (data) => {
-        updateAnalysisStatus('analyzing', 'Analyzing transcript...');
-      });
-
-      analysisEngine.on('analysisCompleted', (data) => {
-        updateAnalysisStatus('ready', 'Analysis complete');
-
-        console.log('Analysis completed with results:', data.results);
-
-        // Update UI with new results
-        if (data.results.summary) {
-          console.log('Adding summary:', data.results.summary);
-          addSummary(data.results.summary);
-        }
-
-        if (data.results.suggestions && data.results.suggestions.length > 0) {
-          console.log('Adding suggestions:', data.results.suggestions);
-          addSuggestions(data.results.suggestions);
-        }
-
-        // Add activities from analysis results
-        if (data.results.activities && data.results.activities.length > 0) {
-          console.log('Adding activities:', data.results.activities);
-          addActivities(data.results.activities);
-        } else {
-          console.log('No activities in results:', data.results.activities);
-        }
-
-        // Auto-expand insights panel if enabled
-        const settings = settingsManager ? settingsManager.getSettings() : {};
-        if (settings.autoExpandInsights && panelStates.insights) {
-          togglePanel('insights');
-        }
-      });
-
-      analysisEngine.on('analysisError', (data) => {
-        updateAnalysisStatus('error', `Analysis failed: ${data.error}`);
-        console.error('Analysis error:', data);
-
-        // Reset status after a delay
-        setTimeout(() => {
-          updateAnalysisStatus('ready', 'Ready');
-        }, 3000);
-      });
-
-      analysisEngine.on('analysisSkipped', (data) => {
-        updateAnalysisStatus('ready', 'Waiting for more content');
-      });
-
-      analysisEngine.on('sessionReset', () => {
-        clearInsights();
-        updateAnalysisStatus('ready', 'Session reset');
-      });
-    }
-
-    // Initialize analysis engine with LLM worker when it becomes available
-    function initializeAnalysisEngineWithLLM() {
-      if (!analysisEngine || !summaryGenerator || !suggestionGenerator) {
-        console.warn('Analysis components not ready for LLM integration');
-        return;
-      }
-
-      // Create a mock LLM worker interface for the analysis engine
-      const llmWorkerInterface = {
-        postMessage: (message) => {
-          // Route analysis requests through the main process
-          window.electronAPI.sendAnalysisRequest(message);
-        },
-        addEventListener: (event, handler) => {
-          // Handle analysis responses
-          window.electronAPI.onAnalysisResponse(handler);
-        },
-        removeEventListener: (event, handler) => {
-          // Note: This is a simplified implementation
-          // In a full implementation, you'd track and remove specific handlers
-        }
-      };
-
-      try {
-        analysisEngine.initialize(
-          transcriptBuffer,
-          summaryGenerator,
-          suggestionGenerator,
-          llmWorkerInterface
-        );
-
-        // Start the analysis engine if auto-analysis is enabled
-        const settings = settingsManager ? settingsManager.getSettings() : {};
-        console.log('Analysis engine settings:', settings);
-
-        if (settings.enableAutoAnalysis) {
-          console.log('Starting analysis engine with auto-analysis enabled');
-          analysisEngine.start();
-        } else {
-          console.log('Auto-analysis is disabled in settings');
-        }
-
-        console.log('Analysis engine initialized with LLM worker');
-        updateAnalysisStatus('ready', 'Ready for analysis');
-
-      } catch (error) {
-        console.error('Failed to initialize analysis engine with LLM:', error);
-        updateAnalysisStatus('error', 'LLM integration failed');
-      }
-    }
-
-    // Expose insights functions globally for integration with analysis engine
-    window.insightsPanel = {
-      addSummary,
-      addSuggestions,
-      updateAnalysisStatus,
-      clearInsights,
-      triggerManualAnalysis,
-      executeActivity,
-      renderActivities
-    };
-
-    // Set up performance monitoring for analysis
-    function setupPerformanceMonitoring() {
-      // Monitor LLM queue status
-      window.electronAPI.onQueueStatus((status) => {
-        if (status.queueLength > 5) {
-          console.warn('LLM queue is getting long:', status.queueLength);
-          updateAnalysisStatus('warning', 'High analysis load');
-        }
-      });
-
-      // Monitor performance warnings
-      window.electronAPI.onPerformanceWarning((warning) => {
-        console.warn('Performance warning:', warning);
-        updateAnalysisStatus('warning', warning.message || 'Performance issue detected');
-
-        // Auto-pause analysis if performance is severely impacted
-        if (warning.severity === 'high' && analysisEngine && analysisEngine.isRunning) {
-          analysisEngine.pause();
-          setTimeout(() => {
-            if (analysisEngine && analysisEngine.isPaused) {
-              analysisEngine.resume();
-            }
-          }, 10000); // Resume after 10 seconds
-        }
-      });
-    }
-
-    function applyHostedModeBadge(cfg) {
-      const enabled = !!(cfg && cfg.enabled && cfg.backendUrl && cfg.tenantId && cfg.jwtToken);
-      hostedModeBadgeEl.textContent = enabled ? `Hosted: ${cfg.tenantId}` : 'Local Mode';
-      hostedModeBadgeEl.style.background = enabled ? 'rgba(48, 122, 99, 0.24)' : 'rgba(88, 103, 130, 0.24)';
-      hostedModeBadgeEl.style.borderColor = enabled ? 'rgba(83, 191, 150, 0.45)' : 'rgba(140, 161, 194, 0.4)';
-      hostedModeBadgeEl.style.color = enabled ? '#a9ffd8' : '#d6e5ff';
-    }
-
-    function renderReminderItems(reminders) {
-      if (!remindersListEl) return;
-      if (!Array.isArray(reminders) || reminders.length === 0) {
-        remindersListEl.innerHTML = '<div class="empty-state">No upcoming sequence meetings in the configured lookahead window.</div>';
-        return;
-      }
-
-      remindersListEl.innerHTML = reminders.slice(0, 8).map((item) => {
-        const person = item.person_name || item.person_email || 'Unknown contact';
-        const company = item.company_name || 'Unknown company';
-        const when = item.scheduled_at ? new Date(item.scheduled_at).toLocaleString() : 'Unknown time';
-        const inMinutes = Number(item.in_minutes || 0);
-        return `
-          <div class="reminder-item">
-            <div class="reminder-item-title">${person} (${company})</div>
-            <div class="reminder-item-meta">
-              In ${inMinutes} minute${inMinutes === 1 ? '' : 's'} · ${when}<br/>
-              Pipeline: ${item.pipeline_id || 'n/a'} · ${item.type || 'event'}
-            </div>
-          </div>
-        `;
-      }).join('');
-    }
-
-    function updateReminderBanner(reminders) {
-      if (!meetingReminderBannerEl) return;
-      if (!Array.isArray(reminders) || reminders.length === 0) {
-        meetingReminderBannerEl.classList.add('hidden');
-        meetingReminderBannerEl.innerHTML = '';
-        return;
-      }
-      const next = reminders[0] || {};
-      const person = next.person_name || next.person_email || 'Unknown contact';
-      const company = next.company_name || 'Unknown company';
-      const inMinutes = Number(next.in_minutes || 0);
-      const when = next.scheduled_at ? new Date(next.scheduled_at).toLocaleString() : 'Unknown time';
-      meetingReminderBannerEl.classList.remove('hidden');
-      meetingReminderBannerEl.innerHTML = `
-        <strong>Upcoming Meeting Reminder</strong><br/>
-        ${person} (${company}) in ${inMinutes} minute${inMinutes === 1 ? '' : 's'}.
-        <div class="reminder-meta">${when} · Pipeline ${next.pipeline_id || 'n/a'}</div>
-      `;
-    }
-
-    async function refreshHostedReminders(event) {
-      if (event && typeof event.stopPropagation === 'function') event.stopPropagation();
-      if (!window.electronAPI?.getHostedReminders) return;
-      try {
-        const response = await window.electronAPI.getHostedReminders();
-        if (!response || response.success === false) {
-          renderReminderItems([]);
-          updateReminderBanner([]);
-          if (response && response.error) {
-            remindersListEl.innerHTML = `<div class="empty-state">Reminder lookup failed: ${response.error}</div>`;
-          }
-          return;
-        }
-        const reminders = response.reminders || [];
-        renderReminderItems(reminders);
-        updateReminderBanner(reminders);
-      } catch (err) {
-        renderReminderItems([]);
-        updateReminderBanner([]);
-        if (remindersListEl) {
-          remindersListEl.innerHTML = `<div class="empty-state">Reminder lookup failed: ${String(err?.message || err)}</div>`;
-        }
-      }
-    }
-
-    function startHostedReminderPolling() {
-      if (hostedReminderTimer) {
-        clearInterval(hostedReminderTimer);
-        hostedReminderTimer = null;
-      }
-      if (!hostedConfig || !hostedConfig.enabled) {
-        renderReminderItems([]);
-        updateReminderBanner([]);
-        return;
-      }
-      refreshHostedReminders();
-      hostedReminderTimer = setInterval(() => {
-        refreshHostedReminders();
-      }, 60000);
-    }
-
-    async function loadHostedConfigIntoUI() {
-      if (!window.electronAPI?.getHostedConfig) return;
-      try {
-        const response = await window.electronAPI.getHostedConfig();
-        const cfg = response && response.config ? response.config : {};
-        hostedConfig = cfg;
-        applyHostedModeBadge(cfg);
-        const hostedEnabledEl = document.getElementById('hostedEnabled');
-        const hostedBackendUrlEl = document.getElementById('hostedBackendUrl');
-        const hostedTenantIdEl = document.getElementById('hostedTenantId');
-        const hostedJwtTokenEl = document.getElementById('hostedJwtToken');
-        const hostedAnalysisModelEl = document.getElementById('hostedAnalysisModel');
-        const hostedLookaheadMinutesEl = document.getElementById('hostedLookaheadMinutes');
-        const hostedDefaultPipelineIdEl = document.getElementById('hostedDefaultPipelineId');
-        if (hostedEnabledEl) hostedEnabledEl.checked = !!cfg.enabled;
-        if (hostedBackendUrlEl) hostedBackendUrlEl.value = cfg.backendUrl || 'http://localhost:8788';
-        if (hostedTenantIdEl) hostedTenantIdEl.value = cfg.tenantId || '';
-        if (hostedJwtTokenEl) hostedJwtTokenEl.value = cfg.jwtToken || '';
-        if (hostedAnalysisModelEl) hostedAnalysisModelEl.value = cfg.analysisModel || 'gpt-5-mini';
-        if (hostedLookaheadMinutesEl) hostedLookaheadMinutesEl.value = String(cfg.lookaheadMinutes || 30);
-        if (hostedDefaultPipelineIdEl) hostedDefaultPipelineIdEl.value = cfg.defaultPipelineId || '';
-        startHostedReminderPolling();
-      } catch (e) {
-        console.error('Failed to load hosted config:', e);
-      }
-    }
-
-    function getHostedConfigFromForm() {
-      const lookaheadRaw = parseInt(document.getElementById('hostedLookaheadMinutes')?.value || '30', 10);
-      const lookaheadMinutes = Math.max(5, Math.min(240, Number.isFinite(lookaheadRaw) ? lookaheadRaw : 30));
-      return {
-        enabled: !!document.getElementById('hostedEnabled')?.checked,
-        backendUrl: (document.getElementById('hostedBackendUrl')?.value || '').trim() || 'http://localhost:8788',
-        tenantId: (document.getElementById('hostedTenantId')?.value || '').trim(),
-        jwtToken: (document.getElementById('hostedJwtToken')?.value || '').trim(),
-        analysisModel: (document.getElementById('hostedAnalysisModel')?.value || 'gpt-5-mini').trim(),
-        lookaheadMinutes,
-        defaultPipelineId: (document.getElementById('hostedDefaultPipelineId')?.value || '').trim(),
-      };
-    }
-
-    // Expose analysis engine globally
-    window.analysisEngine = analysisEngine;
-
-    // ===== SETTINGS FUNCTIONALITY =====
-
-    // Initialize settings manager
-    let settingsManager;
-
-    // Initialize settings when DOM is ready
-    document.addEventListener('DOMContentLoaded', () => {
-      try {
-        settingsManager = new SettingsManager();
-
-        // Initialize analysis components
-        initializeAnalysisComponents();
-
-        // Load current settings into UI
-        loadSettingsIntoUI();
-        loadHostedConfigIntoUI();
-
-        // Set up event listeners
-        setupSettingsEventListeners();
-
-        // Listen for settings changes
-        settingsManager.on('settingsChanged', (event) => {
-          // Apply settings to analysis engine if available
-          if (analysisEngine && typeof analysisEngine.updateSettings === 'function') {
-            const engineSettings = settingsManager.getAnalysisEngineSettings();
-            analysisEngine.updateSettings(engineSettings);
-          }
-
-          // Update UI based on settings
-          applyUISettings(event.currentSettings);
-        });
-
-        console.log('DOM content loaded and initialized successfully');
-      } catch (error) {
-        console.error('Failed to initialize on DOM content loaded:', error);
-      }
-    });
-
-    // Open settings modal
-    function openSettingsModal(event) {
-      event.stopPropagation();
-
-      // Load current settings into form
-      loadSettingsIntoUI();
-      loadHostedConfigIntoUI();
-
-      // Show modal
-      const settingsModal = document.getElementById('settings-modal');
-      settingsModal.classList.add('active');
-      document.body.style.overflow = 'hidden';
-    }
-
-    // Close settings modal
-    function closeSettingsModal() {
-      const settingsModal = document.getElementById('settings-modal');
-      settingsModal.classList.remove('active');
-      document.body.style.overflow = 'auto';
-
-      // Hide status message
-      const statusEl = document.getElementById('settings-status');
-      statusEl.style.display = 'none';
-    }
-
-    // Load settings into UI form
-    function loadSettingsIntoUI() {
-      if (!settingsManager) return;
-
-      const settings = settingsManager.getSettings();
-
-      // Analysis settings
-      document.getElementById('enableAutoAnalysis').checked = settings.enableAutoAnalysis;
-      document.getElementById('analysisInterval').value = settings.analysisInterval / 1000; // Convert to seconds
-      document.getElementById('intervalDisplay').textContent = `${settings.analysisInterval / 1000}s`;
-      document.getElementById('minTranscriptLength').value = settings.minTranscriptLength;
-
-      // Feature settings
-      document.getElementById('enableSummaries').checked = settings.enableSummaries;
-      document.getElementById('enableSuggestions').checked = settings.enableSuggestions;
-
-      // Suggestion types
-      settings.suggestionTypes.forEach(type => {
-        const checkbox = document.getElementById(`suggestionType-${type}`);
-        if (checkbox) checkbox.checked = true;
-      });
-
-      // UI settings
-      document.getElementById('showAnalysisStatus').checked = settings.showAnalysisStatus;
-      document.getElementById('autoExpandInsights').checked = settings.autoExpandInsights;
-      document.getElementById('compactMode').checked = settings.compactMode;
-
-      // Data management
-      document.getElementById('maxSummaries').value = settings.maxSummaries;
-      document.getElementById('maxSuggestions').value = settings.maxSuggestions;
-      document.getElementById('sessionPersistence').checked = settings.sessionPersistence;
-
-      // Load MCP settings
-      loadMCPConfig();
-
-      // Load LLM tier override
-      window.electronAPI.getLLMTierOverride().then(res => {
-        const sel = document.getElementById('llmTierOverride');
-        if (sel && res && res.tier) sel.value = res.tier;
-      }).catch(() => {});
-    }
-
-    // Set up event listeners for settings form
-    function setupSettingsEventListeners() {
-      // Analysis interval slider
-      const intervalSlider = document.getElementById('analysisInterval');
-      const intervalDisplay = document.getElementById('intervalDisplay');
-
-      intervalSlider.addEventListener('input', (e) => {
-        intervalDisplay.textContent = `${e.target.value}s`;
-      });
-
-      // Close modal on overlay click
-      document.getElementById('settings-modal').onclick = (e) => {
-        if (e.target.id === 'settings-modal') {
-          closeSettingsModal();
-        }
-      };
-
-      // Close modal on Escape key
-      document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-          const settingsModal = document.getElementById('settings-modal');
-          if (settingsModal.classList.contains('active')) {
-            closeSettingsModal();
-          }
-        }
-      });
-
-      // File input for settings import
-      document.getElementById('settingsFileInput').addEventListener('change', handleSettingsFileImport);
-    }
-
-    // Save settings from form
-    async function saveSettings() {
-      if (!settingsManager) return;
-
-      const formData = getSettingsFromForm();
-      const result = settingsManager.updateSettings(formData);
-
-      showSettingsStatus(result);
-
-      // Save LLM tier override
-      const tier = document.getElementById('llmTierOverride')?.value || 'auto';
-      window.electronAPI.setLLMTierOverride(tier).then(r => {
-        if (r && r.success) {
-          showSettingsStatus({ success: true, message: 'LLM tier override saved (restart required)' });
-        }
-      }).catch(() => {});
-
-      // Save hosted runtime config
-      try {
-        const hostedFormConfig = getHostedConfigFromForm();
-        const hostedResp = await window.electronAPI.setHostedConfig(hostedFormConfig);
-        if (hostedResp && hostedResp.success) {
-          hostedConfig = hostedResp.config || hostedFormConfig;
-          applyHostedModeBadge(hostedConfig);
-          startHostedReminderPolling();
-        } else if (hostedResp && hostedResp.error) {
-          showSettingsStatus({ success: false, errors: [hostedResp.error] });
-        }
-      } catch (e) {
-        showSettingsStatus({ success: false, errors: [`Hosted config save failed: ${String(e?.message || e)}`] });
-      }
-
-      if (result.success) {
-        // Close modal after successful save
-        setTimeout(() => {
-          closeSettingsModal();
-        }, 1500);
-      }
-    }
-
-    // Get settings from form
-    function getSettingsFromForm() {
-      // Get suggestion types
-      const suggestionTypes = [];
-      ['action-item', 'question', 'topic', 'resource'].forEach(type => {
-        const checkbox = document.getElementById(`suggestionType-${type}`);
-        if (checkbox && checkbox.checked) {
-          suggestionTypes.push(type);
-        }
-      });
-
-      return {
-        // Analysis settings
-        enableAutoAnalysis: document.getElementById('enableAutoAnalysis').checked,
-        analysisInterval: parseInt(document.getElementById('analysisInterval').value) * 1000, // Convert to milliseconds
-        minTranscriptLength: parseInt(document.getElementById('minTranscriptLength').value),
-
-        // Feature settings
-        enableSummaries: document.getElementById('enableSummaries').checked,
-        enableSuggestions: document.getElementById('enableSuggestions').checked,
-        suggestionTypes: suggestionTypes,
-
-        // UI settings
-        showAnalysisStatus: document.getElementById('showAnalysisStatus').checked,
-        autoExpandInsights: document.getElementById('autoExpandInsights').checked,
-        compactMode: document.getElementById('compactMode').checked,
-
-        // Data management
-        maxSummaries: parseInt(document.getElementById('maxSummaries').value),
-        maxSuggestions: parseInt(document.getElementById('maxSuggestions').value),
-        sessionPersistence: document.getElementById('sessionPersistence').checked
-      };
-    }
-
-    // Reset settings to defaults
-    function resetSettingsToDefaults() {
-      if (!settingsManager) return;
-
-      if (confirm('Are you sure you want to reset all settings to defaults? This cannot be undone.')) {
-        settingsManager.resetToDefaults();
-        loadSettingsIntoUI();
-        showSettingsStatus({ success: true, message: 'Settings reset to defaults' });
-      }
-    }
-
-    // Export settings
-    function exportSettings() {
-      if (!settingsManager) return;
-
-      const exportData = settingsManager.exportSettings();
-      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `ai-insights-settings-${new Date().toISOString().split('T')[0]}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      showSettingsStatus({ success: true, message: 'Settings exported successfully' });
-    }
-
-    // Import settings
-    function importSettings() {
-      const fileInput = document.getElementById('settingsFileInput');
-      fileInput.click();
+    function setStatus(text) {
+      statusEl.textContent = text;
     }
-
-    // Handle settings file import
-    function handleSettingsFileImport(event) {
-      const file = event.target.files[0];
-      if (!file) return;
-
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const importData = JSON.parse(e.target.result);
-          const result = settingsManager.importSettings(importData);
-
-          if (result.success) {
-            loadSettingsIntoUI();
-            showSettingsStatus({ success: true, message: 'Settings imported successfully' });
-          } else {
-            showSettingsStatus({ success: false, errors: result.errors });
-          }
-        } catch (error) {
-          showSettingsStatus({ success: false, errors: ['Invalid settings file format'] });
-        }
-      };
-      reader.readAsText(file);
-
-      // Clear the file input
-      event.target.value = '';
-    }
-
-    // Show settings status message
-    function showSettingsStatus(result) {
-      const statusEl = document.getElementById('settings-status');
-
-      if (result.success) {
-        statusEl.className = 'settings-status success';
-        statusEl.textContent = result.message || 'Settings saved successfully';
-
-        if (result.warnings && result.warnings.length > 0) {
-          statusEl.textContent += ` (Warnings: ${result.warnings.join(', ')})`;
-        }
-      } else {
-        statusEl.className = 'settings-status error';
-        statusEl.textContent = result.errors ? result.errors.join(', ') : 'Failed to save settings';
-      }
-
-      statusEl.style.display = 'block';
-
-      // Auto-hide success messages
-      if (result.success) {
-        setTimeout(() => {
-          statusEl.style.display = 'none';
-        }, 3000);
-      }
-    }
-
-    // Apply UI settings to the interface
-    function applyUISettings(settings) {
-      // Show/hide analysis status
-      const analysisStatus = document.querySelector('.analysis-status');
-      if (analysisStatus) {
-        analysisStatus.style.display = settings.showAnalysisStatus ? 'flex' : 'none';
-      }
-
-      // Auto-expand insights panel
-      if (settings.autoExpandInsights && !panelStates.insights) {
-        togglePanel('insights');
-      }
-
-      // Apply compact mode
-      const widget = document.getElementById('widget');
-      if (settings.compactMode) {
-        widget.classList.add('compact-mode');
-      } else {
-        widget.classList.remove('compact-mode');
-      }
-    }
-
-    // Expose settings manager globally
-    window.settingsManager = settingsManager;
-
-    // Function to get current settings for analysis engine
-    window.getAnalysisSettings = function () {
-      return settingsManager ? settingsManager.getAnalysisEngineSettings() : null;
-    };
-
-    // MCP Settings Functions
-    let mcpConfig = null;
-    let editingServerId = null;
-
-    // Load MCP configuration
-    async function loadMCPConfig() {
-      try {
-        const response = await window.electronAPI.getMCPConfig();
-        mcpConfig = response.config;
-        updateMCPUI();
-      } catch (error) {
-        console.error('Failed to load MCP config:', error);
-        showSettingsStatus({ success: false, errors: ['Failed to load MCP configuration'] });
-      }
-    }
-
-    // Update MCP UI with current configuration
-    function updateMCPUI() {
-      const enableMCP = document.getElementById('enableMCP');
-      const serversList = document.getElementById('mcp-servers-list');
-      
-      if (!mcpConfig) {
-        enableMCP.checked = false;
-        serversList.innerHTML = '<div class="mcp-empty-state">No MCP configuration loaded</div>';
-        return;
-      }
-
-      // Update enable checkbox (assume enabled if any servers exist)
-      enableMCP.checked = Object.keys(mcpConfig.mcpServers || {}).length > 0;
-
-      // Update servers list
-      const servers = mcpConfig.mcpServers || {};
-      if (Object.keys(servers).length === 0) {
-        serversList.innerHTML = '<div class="mcp-empty-state">No MCP servers configured.<br>Click "Add Server" to get started.</div>';
-        return;
-      }
 
-      serversList.innerHTML = '';
-      Object.entries(servers).forEach(([serverId, serverConfig]) => {
-        const serverItem = createMCPServerItem(serverId, serverConfig);
-        serversList.appendChild(serverItem);
-      });
+    function nowLabel() {
+      return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     }
 
-    // Create MCP server item element
-    function createMCPServerItem(serverId, serverConfig) {
+    function appendTimeline(text, kind = 'sys') {
       const item = document.createElement('div');
-      item.className = 'mcp-server-item';
-      
-      const statusClass = serverConfig.disabled ? 'disconnected' : 'connected';
-      const statusText = serverConfig.disabled ? 'Disabled' : 'Enabled';
-      
-      item.innerHTML = `
-        <div class="mcp-server-header">
-          <div class="mcp-server-name">${serverConfig.name || serverId}</div>
-          <div class="mcp-server-status">
-            <div class="mcp-status-indicator ${statusClass}"></div>
-            <span>${statusText}</span>
-          </div>
-        </div>
-        <div class="mcp-server-details">
-          <div class="mcp-server-command">${serverConfig.command} ${(serverConfig.args || []).join(' ')}</div>
-          ${Object.keys(serverConfig.env || {}).length > 0 ? 
-            `<div>Environment: ${Object.keys(serverConfig.env).join(', ')}</div>` : ''}
-        </div>
-        <div class="mcp-server-controls">
-          <button class="test-btn" onclick="testMCPServer('${serverId}')">Test</button>
-          <button class="toggle-btn ${serverConfig.disabled ? '' : 'enabled'}" 
-                  onclick="toggleMCPServer('${serverId}')">
-            ${serverConfig.disabled ? 'Enable' : 'Disable'}
-          </button>
-          <button onclick="editMCPServer('${serverId}')">Edit</button>
-          <button class="delete-btn" onclick="deleteMCPServer('${serverId}')">Delete</button>
-        </div>
-      `;
-      
-      return item;
+      item.className = `bubble ${kind}`;
+      item.textContent = text;
+      const stamp = document.createElement('small');
+      stamp.textContent = nowLabel();
+      item.appendChild(stamp);
+      timelineEl.appendChild(item);
+      timelineEl.scrollTop = timelineEl.scrollHeight;
     }
 
-    // Show MCP server form
-    function showMCPServerForm(serverId = null) {
-      const form = document.getElementById('mcp-server-form');
-      const title = document.getElementById('mcp-form-title');
-      
-      editingServerId = serverId;
-      
-      if (serverId) {
-        title.textContent = 'Edit MCP Server';
-        const serverConfig = mcpConfig.mcpServers[serverId];
-        
-        // Populate form with existing data
-        document.getElementById('mcp-server-id').value = serverId;
-        document.getElementById('mcp-server-id').disabled = true;
-        document.getElementById('mcp-server-name').value = serverConfig.name || serverId;
-        document.getElementById('mcp-server-command').value = serverConfig.command || '';
-        document.getElementById('mcp-server-args').value = (serverConfig.args || []).join(' ');
-        document.getElementById('mcp-server-enabled').checked = !serverConfig.disabled;
-        
-        // Format environment variables
-        const envVars = Object.entries(serverConfig.env || {})
-          .map(([key, value]) => `${key}=${value}`)
-          .join('\n');
-        document.getElementById('mcp-server-env').value = envVars;
-      } else {
-        title.textContent = 'Add MCP Server';
-        document.getElementById('mcp-server-id').disabled = false;
-        
-        // Clear form
-        document.getElementById('mcp-server-id').value = '';
-        document.getElementById('mcp-server-name').value = '';
-        document.getElementById('mcp-server-command').value = 'npx';
-        document.getElementById('mcp-server-args').value = '';
-        document.getElementById('mcp-server-env').value = '';
-        document.getElementById('mcp-server-enabled').checked = true;
+    function addInsightCard(title, body, tags = []) {
+      const card = document.createElement('div');
+      card.className = 'insight-card';
+      card.innerHTML = `<div class="insight-title"></div><div class="insight-body"></div><div class="insight-tags"></div>`;
+      card.querySelector('.insight-title').textContent = title;
+      card.querySelector('.insight-body').textContent = body;
+      const tagsEl = card.querySelector('.insight-tags');
+      for (const tag of tags) {
+        const chip = document.createElement('span');
+        chip.className = 'tag';
+        chip.textContent = tag;
+        tagsEl.appendChild(chip);
       }
-      
-      form.classList.add('active');
+      bubbleGridEl.prepend(card);
+      state.insightCount += 1;
+      insightMetaEl.textContent = `${state.insightCount} generated`;
     }
 
-    // Hide MCP server form
-    function hideMCPServerForm() {
-      const form = document.getElementById('mcp-server-form');
-      form.classList.remove('active');
-      editingServerId = null;
-    }
-
-    // Add MCP server button handler
-    document.getElementById('add-mcp-server').addEventListener('click', () => {
-      showMCPServerForm();
-    });
-
-    // Cancel MCP server form
-    function cancelMCPServerForm() {
-      hideMCPServerForm();
-    }
-
-    // Save MCP server
-    async function saveMCPServer() {
-      const serverId = document.getElementById('mcp-server-id').value.trim();
-      const serverName = document.getElementById('mcp-server-name').value.trim();
-      const command = document.getElementById('mcp-server-command').value.trim();
-      const argsText = document.getElementById('mcp-server-args').value.trim();
-      const envText = document.getElementById('mcp-server-env').value.trim();
-      const enabled = document.getElementById('mcp-server-enabled').checked;
-
-      // Validation
-      if (!serverId) {
-        showSettingsStatus({ success: false, errors: ['Server ID is required'] });
+    function renderReminders(reminders) {
+      reminderStripEl.innerHTML = '';
+      if (!Array.isArray(reminders) || reminders.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'empty';
+        empty.style.minWidth = '100%';
+        empty.textContent = 'No upcoming meetings in the configured lookahead window.';
+        reminderStripEl.appendChild(empty);
         return;
       }
 
-      if (!command) {
-        showSettingsStatus({ success: false, errors: ['Command is required'] });
+      reminders.slice(0, 8).forEach((r) => {
+        const card = document.createElement('div');
+        card.className = 'reminder-card';
+        const who = r.person_name || r.person_email || 'Unknown person';
+        const company = r.company_name || 'Unknown company';
+        const when = r.scheduled_at ? new Date(r.scheduled_at).toLocaleString() : 'unscheduled';
+        card.innerHTML = `<strong>${who}</strong>${company}<br>${when}<br>Pipeline: ${r.pipeline_id || 'n/a'}`;
+        reminderStripEl.appendChild(card);
+      });
+    }
+
+    function updateSessionMeta() {
+      if (!state.sessionId) {
+        sessionMetaEl.textContent = 'No active session';
         return;
       }
+      sessionMetaEl.textContent = `Session ${state.sessionId.slice(-8)} · ${state.listening ? 'listening' : 'idle'}`;
+    }
 
-      // Parse arguments
-      const args = argsText ? argsText.split(/\s+/).filter(arg => arg.length > 0) : [];
+    async function loadConfigToUI() {
+      const res = await API.getHostedConfig();
+      if (!res || !res.success) {
+        setStatus(`Config load failed: ${res?.error || 'unknown error'}`);
+        return;
+      }
+      state.config = res.config;
+      document.getElementById('cfgBackendUrl').value = state.config.backendUrl || 'http://localhost:8788';
+      document.getElementById('cfgTenant').value = state.config.tenantId || '';
+      document.getElementById('cfgJwt').value = state.config.jwtToken || '';
+      document.getElementById('cfgModel').value = state.config.analysisModel || 'gpt-5-mini';
+      document.getElementById('cfgLookahead').value = String(state.config.lookaheadMinutes || 30);
+      document.getElementById('cfgPipeline').value = state.config.defaultPipelineId || '';
+      brandSubEl.textContent = `Hosted via ${state.config.backendUrl || 'http://localhost:8788'} · ${state.config.analysisModel || 'gpt-5-mini'}`;
+    }
 
-      // Parse environment variables
-      const env = {};
-      if (envText) {
-        const lines = envText.split('\n').filter(line => line.trim());
-        for (const line of lines) {
-          const [key, ...valueParts] = line.split('=');
-          if (key && valueParts.length > 0) {
-            env[key.trim()] = valueParts.join('=').trim();
-          }
+    function configFromUI() {
+      return {
+        backendUrl: (document.getElementById('cfgBackendUrl').value || '').trim() || 'http://localhost:8788',
+        tenantId: (document.getElementById('cfgTenant').value || '').trim(),
+        jwtToken: (document.getElementById('cfgJwt').value || '').trim(),
+        analysisModel: (document.getElementById('cfgModel').value || 'gpt-5-mini').trim(),
+        lookaheadMinutes: Number(document.getElementById('cfgLookahead').value || 30),
+        defaultPipelineId: (document.getElementById('cfgPipeline').value || '').trim(),
+      };
+    }
+
+    function requireConfigured() {
+      const cfg = state.config || {};
+      const missing = [];
+      if (!cfg.backendUrl) missing.push('backendUrl');
+      if (!cfg.tenantId) missing.push('tenantId');
+      if (!cfg.jwtToken) missing.push('jwtToken');
+      if (missing.length) {
+        throw new Error(`Configure ${missing.join(', ')} in Settings`);
+      }
+      return cfg;
+    }
+
+    async function refreshReminders() {
+      try {
+        requireConfigured();
+        const res = await API.getHostedReminders();
+        if (!res.success) {
+          renderReminders([]);
+          setStatus(`Reminder error: ${res.error || 'unknown'}`);
+          return;
         }
+        renderReminders(res.reminders || []);
+      } catch (err) {
+        renderReminders([]);
       }
+    }
 
-      const serverConfig = {
-        name: serverName || serverId,
-        command,
-        args,
-        env,
-        disabled: !enabled,
-        autoApprove: []
+    async function startListening() {
+      if (state.listening) return;
+      requireConfigured();
+
+      state.sessionId = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      state.sessionStartedAt = Date.now();
+
+      await API.sessionStart(state.sessionId, {
+        source: 'intelli_desktop',
+        started_at: new Date().toISOString(),
+      });
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+
+      const context = new (window.AudioContext || window.webkitAudioContext)();
+      const source = context.createMediaStreamSource(stream);
+      const processor = context.createScriptProcessor(4096, 1, 1);
+
+      processor.onaudioprocess = (event) => {
+        if (!state.listening) return;
+        const data = event.inputBuffer.getChannelData(0);
+        const copy = new Float32Array(data.length);
+        copy.set(data);
+        API.asrSendChunkF32(copy);
       };
 
-      try {
-        await window.electronAPI.updateMCPServer(serverId, serverConfig);
-        
-        // Update local config
-        if (!mcpConfig.mcpServers) {
-          mcpConfig.mcpServers = {};
-        }
-        mcpConfig.mcpServers[serverId] = serverConfig;
-        
-        updateMCPUI();
-        hideMCPServerForm();
-        showSettingsStatus({ success: true, message: `Server ${serverId} saved successfully` });
-      } catch (error) {
-        console.error('Failed to save MCP server:', error);
-        showSettingsStatus({ success: false, errors: [`Failed to save server: ${error.message}`] });
-      }
+      source.connect(processor);
+      processor.connect(context.destination);
+
+      state.media = { stream, context, source, processor };
+      state.listening = true;
+      document.getElementById('btnStart').disabled = true;
+      document.getElementById('btnStop').disabled = false;
+      updateSessionMeta();
+
+      API.asrStart({
+        sampleRate: context.sampleRate,
+        updateMs: 3200,
+      });
+
+      appendTimeline('Live listening started.', 'sys');
+      setStatus('Listening...');
     }
 
-    // Test MCP server connection
-    async function testMCPServerConnection() {
-      const serverId = document.getElementById('mcp-server-id').value.trim();
-      const command = document.getElementById('mcp-server-command').value.trim();
-      const argsText = document.getElementById('mcp-server-args').value.trim();
-      const envText = document.getElementById('mcp-server-env').value.trim();
+    async function stopListening() {
+      if (!state.listening) return;
 
-      if (!serverId || !command) {
-        showSettingsStatus({ success: false, errors: ['Server ID and Command are required for testing'] });
-        return;
-      }
+      state.listening = false;
+      document.getElementById('btnStart').disabled = false;
+      document.getElementById('btnStop').disabled = true;
 
-      const args = argsText ? argsText.split(/\s+/).filter(arg => arg.length > 0) : [];
-      const env = {};
-      if (envText) {
-        const lines = envText.split('\n').filter(line => line.trim());
-        for (const line of lines) {
-          const [key, ...valueParts] = line.split('=');
-          if (key && valueParts.length > 0) {
-            env[key.trim()] = valueParts.join('=').trim();
-          }
-        }
-      }
-
-      const testConfig = { command, args, env };
-
+      const { stream, context, source, processor } = state.media;
+      try { processor && processor.disconnect(); } catch (_) {}
+      try { source && source.disconnect(); } catch (_) {}
+      try { context && context.close(); } catch (_) {}
       try {
-        showSettingsStatus({ success: true, message: 'Testing connection...' });
-        const result = await window.electronAPI.testMCPConnection(serverId, testConfig);
-        
-        if (result.success) {
-          showSettingsStatus({ success: true, message: `Connection test successful! Found ${result.toolCount || 0} tools.` });
-        } else {
-          showSettingsStatus({ success: false, errors: [`Connection test failed: ${result.error}`] });
+        if (stream) {
+          stream.getTracks().forEach((t) => t.stop());
         }
-      } catch (error) {
-        console.error('Failed to test MCP connection:', error);
-        showSettingsStatus({ success: false, errors: [`Connection test failed: ${error.message}`] });
-      }
-    }
+      } catch (_) {}
+      state.media = { stream: null, context: null, source: null, processor: null };
 
-    // Test existing MCP server
-    async function testMCPServer(serverId) {
-      try {
-        showSettingsStatus({ success: true, message: `Testing ${serverId}...` });
-        const result = await window.electronAPI.testMCPConnection(serverId);
-        
-        if (result.success) {
-          showSettingsStatus({ success: true, message: `${serverId} connection successful! Found ${result.toolCount || 0} tools.` });
-        } else {
-          showSettingsStatus({ success: false, errors: [`${serverId} connection failed: ${result.error}`] });
-        }
-      } catch (error) {
-        console.error('Failed to test MCP server:', error);
-        showSettingsStatus({ success: false, errors: [`Failed to test ${serverId}: ${error.message}`] });
-      }
-    }
+      API.asrStop();
+      appendTimeline('Listening stopped.', 'sys');
+      setStatus('Stopped.');
 
-    // Toggle MCP server enabled/disabled
-    async function toggleMCPServer(serverId) {
-      try {
-        const serverConfig = { ...mcpConfig.mcpServers[serverId] };
-        serverConfig.disabled = !serverConfig.disabled;
-        
-        await window.electronAPI.updateMCPServer(serverId, serverConfig);
-        mcpConfig.mcpServers[serverId] = serverConfig;
-        
-        updateMCPUI();
-        showSettingsStatus({ 
-          success: true, 
-          message: `Server ${serverId} ${serverConfig.disabled ? 'disabled' : 'enabled'}` 
+      if (state.sessionId) {
+        await API.sessionEnd(state.sessionId, {
+          ended_at: new Date().toISOString(),
+          transcript_chars: state.transcript.length,
         });
-      } catch (error) {
-        console.error('Failed to toggle MCP server:', error);
-        showSettingsStatus({ success: false, errors: [`Failed to toggle ${serverId}: ${error.message}`] });
+      }
+      updateSessionMeta();
+    }
+
+    async function runAnalysis(kind) {
+      try {
+        requireConfigured();
+        const transcript = state.transcript.trim();
+        if (!transcript) {
+          setStatus('No transcript available yet.');
+          return;
+        }
+        setStatus(`Running ${kind} analysis...`);
+        API.sendAnalysisRequest({
+          id: `analysis_${Date.now()}`,
+          transcript,
+          analysisType: kind,
+          context: {
+            customPrompt: promptEl.value.trim() || undefined,
+          },
+        });
+      } catch (err) {
+        setStatus(String(err.message || err));
       }
     }
 
-    // Edit MCP server
-    function editMCPServer(serverId) {
-      showMCPServerForm(serverId);
-    }
+    document.getElementById('btnStart').addEventListener('click', () => {
+      startListening().catch((err) => {
+        appendTimeline(`Start failed: ${String(err.message || err)}`, 'sys');
+        setStatus(`Start failed: ${String(err.message || err)}`);
+      });
+    });
 
-    // Delete MCP server
-    async function deleteMCPServer(serverId) {
-      if (!confirm(`Are you sure you want to delete the MCP server "${serverId}"?`)) {
+    document.getElementById('btnStop').addEventListener('click', () => {
+      stopListening().catch((err) => {
+        setStatus(`Stop failed: ${String(err.message || err)}`);
+      });
+    });
+
+    document.getElementById('btnSummary').addEventListener('click', () => runAnalysis('summary'));
+    document.getElementById('btnActions').addEventListener('click', () => runAnalysis('full'));
+
+    promptEl.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' || event.shiftKey) return;
+      event.preventDefault();
+      const prompt = promptEl.value.trim();
+      if (!prompt) return;
+      appendTimeline(prompt, 'user');
+      setStatus('Querying hosted analysis...');
+      API.sendPrompt(`prompt_${Date.now()}`, prompt, state.transcript.slice(-6000));
+      promptEl.value = '';
+    });
+
+    const settingsModal = document.getElementById('settingsModal');
+    document.getElementById('btnSettings').addEventListener('click', () => {
+      settingsModal.classList.add('show');
+      loadConfigToUI().catch(() => {});
+    });
+
+    document.getElementById('btnCloseSettings').addEventListener('click', () => {
+      settingsModal.classList.remove('show');
+    });
+
+    document.getElementById('btnSaveSettings').addEventListener('click', async () => {
+      const res = await API.setHostedConfig(configFromUI());
+      if (!res || !res.success) {
+        setStatus(`Save failed: ${res?.error || 'unknown error'}`);
+        return;
+      }
+      state.config = res.config;
+      brandSubEl.textContent = `Hosted via ${state.config.backendUrl} · ${state.config.analysisModel}`;
+      settingsModal.classList.remove('show');
+      setStatus('Settings saved.');
+      await refreshReminders();
+    });
+
+    API.onASRMessage((msg) => {
+      if (!msg) return;
+      if (msg.op === 'final') {
+        const text = String(msg.text || '').trim();
+        if (!text) return;
+        state.transcript += (state.transcript ? '\n' : '') + text;
+        appendTimeline(text, 'ai');
+        if (state.sessionId) {
+          API.sessionAppendTranscript(state.sessionId, {
+            text,
+            ts: new Date().toISOString(),
+          });
+        }
+        setStatus('Transcript updated.');
+        return;
+      }
+      if (msg.op === 'error') {
+        appendTimeline(`ASR error: ${msg.message || 'unknown error'}`, 'sys');
+        setStatus(`ASR error: ${msg.message || 'unknown error'}`);
+        return;
+      }
+      if (msg.op === 'status') {
+        setStatus(String(msg.message || 'ASR status updated'));
+      }
+    });
+
+    API.onResponse((msg) => {
+      if (!msg) return;
+      if (msg.error) {
+        appendTimeline(`Prompt error: ${msg.error}`, 'sys');
+        setStatus(`Prompt error: ${msg.error}`);
+        return;
+      }
+      const text = String(msg.response || '').trim();
+      if (!text) return;
+      addInsightCard('Prompt Response', text, ['hosted', 'direct']);
+      if (state.sessionId) {
+        API.sessionAppendAnalysis(state.sessionId, {
+          type: 'prompt_response',
+          text,
+          ts: new Date().toISOString(),
+        });
+      }
+      setStatus('Prompt response ready.');
+    });
+
+    API.onAnalysisResponse(({ data }) => {
+      if (!data) return;
+      if (data.error) {
+        appendTimeline(`Analysis error: ${data.error}`, 'sys');
+        setStatus(`Analysis error: ${data.error}`);
         return;
       }
 
-      try {
-        await window.electronAPI.removeMCPServer(serverId);
-        delete mcpConfig.mcpServers[serverId];
-        
-        updateMCPUI();
-        showSettingsStatus({ success: true, message: `Server ${serverId} deleted successfully` });
-      } catch (error) {
-        console.error('Failed to delete MCP server:', error);
-        showSettingsStatus({ success: false, errors: [`Failed to delete ${serverId}: ${error.message}`] });
+      const summary = data.results?.summary || '';
+      const actions = data.results?.suggestions?.actionItems || [];
+      const questions = data.results?.suggestions?.questions || [];
+
+      if (summary) {
+        addInsightCard('Summary', typeof summary === 'string' ? summary : JSON.stringify(summary, null, 2), ['summary']);
       }
+      if (Array.isArray(actions) && actions.length) {
+        addInsightCard('Next Best Actions', actions.map((a, i) => `${i + 1}. ${typeof a === 'string' ? a : JSON.stringify(a)}`).join('\n'), ['actions']);
+      }
+      if (Array.isArray(questions) && questions.length) {
+        addInsightCard('Discovery Questions', questions.map((q, i) => `${i + 1}. ${typeof q === 'string' ? q : JSON.stringify(q)}`).join('\n'), ['questions']);
+      }
+
+      if (state.sessionId) {
+        API.sessionAppendAnalysis(state.sessionId, {
+          type: 'analysis',
+          data: data.results,
+          ts: new Date().toISOString(),
+        });
+      }
+      setStatus('Analysis complete.');
+    });
+
+    API.onModelStatus((status) => {
+      if (status?.message) setStatus(status.message);
+    });
+
+    async function boot() {
+      timelineEl.innerHTML = '<div class="empty">Start listening to begin live transcription and generate revenue intelligence bubbles.</div>';
+      bubbleGridEl.innerHTML = '<div class="empty">Summaries, objections, next actions, and questions appear here as reusable insight bubbles.</div>';
+      await loadConfigToUI();
+      await refreshReminders();
+      setInterval(() => {
+        refreshReminders().catch(() => {});
+      }, 30000);
+      updateSessionMeta();
+      setStatus('Hosted Intelli ready.');
     }
 
-    // Load MCP config when settings modal opens
-    const originalOpenSettingsModal = openSettingsModal;
-    openSettingsModal = function(event) {
-      originalOpenSettingsModal(event);
-      loadMCPConfig();
-    };
+    boot().catch((err) => {
+      setStatus(`Startup error: ${String(err.message || err)}`);
+    });
   </script>
-  <!-- Sessions Viewer Overlay -->
-  <div id="sessions-overlay">
-    <div id="sessions-modal">
-      <div class="sessions-sidebar">
-        <div class="sessions-header">
-          <span>Sessions</span>
-          <button class="sessions-close" onclick="closeSessionsViewer()">✖</button>
-        </div>
-        <div id="sessions-list"></div>
-      </div>
-      <div class="sessions-content">
-        <div class="final-summary" id="final-summary-box" style="display:none;"></div>
-        <div class="viewer-actions">
-          <button id="btn-generate-final" onclick="generateFinalSummary()">Generate Final Summary</button>
-        </div>
-        <div class="viewer-section">
-          <h4>Summaries</h4>
-          <div id="viewer-summaries" class="viewer-transcript">No summaries yet.</div>
-        </div>
-        <div class="viewer-section">
-          <h4>Suggestions</h4>
-          <div id="viewer-suggestions" class="viewer-transcript">No suggestions yet.</div>
-        </div>
-        <div class="viewer-section">
-          <h4>Activities</h4>
-          <div id="viewer-activities" class="viewer-transcript">No activities yet.</div>
-        </div>
-        <div class="viewer-section">
-          <h4>Transcript</h4>
-          <div id="viewer-transcript" class="viewer-transcript">No transcript.</div>
-        </div>
-      </div>
-    </div>
-  </div>
-
 </body>
-
 </html>

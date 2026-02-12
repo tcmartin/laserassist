@@ -6,8 +6,7 @@
   "main": "main.js",
   "scripts": {
     "start": "npx electron . --user-data-dir=./.temp-user-data",
-    "test-icon": "node test-app-icon.js",
-    "build-asr": "python3 build-asr-binary.py",
+    "test": "node --test tests/*.test.js",
     "build": "./build-optimized.sh",
     "build-mas": "./build-mas.sh",
     "build-dmg": "./build-optimized.sh",
@@ -57,15 +56,7 @@
       "category": "Office"
     }
   },
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.17.0",
-    "@xenova/transformers": "^2.17.2",
-    "express": "^5.1.0",
-    "jsdom": "^26.1.0",
-    "node-llama-cpp": "^3.10.0",
-    "nodejs-whisper": "^0.2.9",
-    "recordrtc": "^5.6.2"
-  },
+  "dependencies": {},
   "devDependencies": {
     "electron": "^26.0.0",
     "electron-builder": "^24.13.3"
