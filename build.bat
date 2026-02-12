@@ -2,7 +2,7 @@
 REM Complete build script for Insighto with ASR server (Windows)
 REM This script builds the Python ASR server binary and packages the Electron app
 
-echo 🚀 Building Insighto with ASR Server
+echo 🚀 Building Laserreach Intelli with ASR Server
 echo ====================================
 
 REM Check if Python is installed
@@ -61,8 +61,8 @@ REM Create build configuration
 echo [INFO] Creating build configuration...
 (
 echo const config = {
-echo   appId: "com.yourcompany.insighto",
-echo   productName: "Insighto",
+echo   appId: "com.laserreach.intelli",
+echo   productName: "Laserreach Intelli",
 echo   directories: {
 echo     output: "dist-app"
 echo   },

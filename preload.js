@@ -40,6 +40,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getLLMTierOverride: () => ipcRenderer.invoke('llm-get-tier-override'),
   setLLMTierOverride: (tier) => ipcRenderer.invoke('llm-set-tier-override', tier),
 
+  // Hosted backend mode (Laserreach backend: Deepgram + GPT-5-mini)
+  getHostedConfig: () => ipcRenderer.invoke('hosted-get-config'),
+  setHostedConfig: (config) => ipcRenderer.invoke('hosted-set-config', config),
+  getHostedReminders: () => ipcRenderer.invoke('hosted-get-reminders'),
+
   // ASR helper APIs
   asrStart: (opts) => ipcRenderer.send('asr-start', opts || {}),
   asrSendChunkF32: (bufferOrView) => {

@@ -3,12 +3,12 @@
 
 <head>
   <meta charset="UTF-8" />
-  <title>Insighto – AI Transcription & Analysis</title>
+  <title>Laserreach Intelli - In-Call Revenue Intelligence</title>
   <style>
     body {
       margin: 0;
       background: transparent;
-      font-family: sans-serif;
+      font-family: "Manrope", "Avenir Next", "Segoe UI", sans-serif;
     }
 
     #widget {
@@ -17,15 +17,16 @@
       left: 20px;
       right: 20px;
       bottom: 20px;
-      background: rgba(0, 0, 0, 0.9);
+      background: linear-gradient(145deg, rgba(14, 18, 28, 0.96), rgba(18, 24, 36, 0.96));
       color: #fff;
-      border-radius: 12px;
+      border-radius: 16px;
       display: flex;
       flex-direction: column;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-      backdrop-filter: blur(10px);
+      box-shadow: 0 16px 48px rgba(5, 10, 20, 0.52);
+      backdrop-filter: blur(12px);
       -webkit-app-region: drag;
       overflow: hidden;
+      border: 1px solid rgba(112, 132, 168, 0.28);
     }
 
     /* Make interactive elements non-draggable */
@@ -137,7 +138,7 @@
       padding: 16px;
       border-bottom: 1px solid #333;
       flex-shrink: 0;
-      background: rgba(0, 0, 0, 0.5);
+      background: linear-gradient(180deg, rgba(22, 29, 44, 0.95), rgba(18, 23, 34, 0.88));
       -webkit-app-region: drag;
       /* Header is draggable */
     }
@@ -146,6 +147,59 @@
     .widget-header button,
     .widget-header .control-row {
       -webkit-app-region: no-drag;
+    }
+
+    .brand-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+      -webkit-app-region: no-drag;
+    }
+
+    .brand-mark {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .brand-mark img {
+      width: 30px;
+      height: 30px;
+      border-radius: 8px;
+      object-fit: cover;
+      border: 1px solid rgba(132, 168, 218, 0.35);
+      background: rgba(13, 18, 30, 0.85);
+    }
+
+    .brand-text {
+      display: flex;
+      flex-direction: column;
+      line-height: 1.15;
+    }
+
+    .brand-title {
+      font-weight: 700;
+      font-size: 14px;
+      letter-spacing: 0.01em;
+      color: #e8f0ff;
+    }
+
+    .brand-subtitle {
+      font-size: 11px;
+      color: #9fb3d9;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+
+    .brand-badge {
+      font-size: 11px;
+      color: #a9ffd8;
+      background: rgba(48, 122, 99, 0.24);
+      border: 1px solid rgba(83, 191, 150, 0.45);
+      padding: 4px 8px;
+      border-radius: 999px;
     }
 
     .control-row {
@@ -163,7 +217,7 @@
       padding: 8px 12px;
       border: none;
       border-radius: 6px;
-      background: #4CAF50;
+      background: linear-gradient(180deg, #4d8ef7, #3679ef);
       color: white;
       cursor: pointer;
       font-size: 13px;
@@ -171,7 +225,7 @@
     }
 
     .control-row button:hover {
-      background: #45a049;
+      background: linear-gradient(180deg, #5c9aff, #3e7ff2);
     }
 
     .control-row button:disabled {
@@ -181,9 +235,36 @@
 
     .status-display {
       font-size: 12px;
-      color: #ddd;
-      text-align: center;
-      margin: 4px 0;
+      color: #d3def3;
+      text-align: left;
+      margin: 6px 0 2px 0;
+    }
+
+    .reminder-banner {
+      margin-top: 8px;
+      padding: 9px 10px;
+      border-radius: 10px;
+      background: rgba(18, 62, 99, 0.38);
+      border: 1px solid rgba(102, 173, 241, 0.45);
+      color: #d7ebff;
+      font-size: 12px;
+      line-height: 1.45;
+      -webkit-app-region: no-drag;
+    }
+
+    .reminder-banner.hidden {
+      display: none;
+    }
+
+    .reminder-banner strong {
+      color: #f7fcff;
+      font-size: 12px;
+      letter-spacing: 0.01em;
+    }
+
+    .reminder-meta {
+      font-size: 11px;
+      color: #b8d5f7;
     }
 
     /* Scrollable content area */
@@ -198,7 +279,7 @@
     /* Panel sections */
     .panel-section {
       border-bottom: 1px solid #333;
-      background: rgba(255, 255, 255, 0.02);
+      background: rgba(255, 255, 255, 0.025);
     }
 
     .panel-section:last-child {
@@ -214,6 +295,32 @@
       justify-content: space-between;
       background: rgba(255, 255, 255, 0.05);
       transition: background-color 0.2s;
+    }
+
+    .reminders-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .reminder-item {
+      padding: 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(126, 160, 218, 0.35);
+      background: rgba(24, 39, 63, 0.34);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .reminder-item-title {
+      color: #f4f8ff;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .reminder-item-meta {
+      color: #b1c9ee;
+      font-size: 11px;
     }
 
     .panel-header:hover {
@@ -1255,6 +1362,16 @@
     <div id="widget">
     <!-- Fixed header with core controls -->
     <div class="widget-header">
+      <div class="brand-row">
+        <div class="brand-mark">
+          <img src="assets/laserreach-logo.png" alt="Laserreach logo" />
+          <div class="brand-text">
+            <span class="brand-title">Laserreach Intelli</span>
+            <span class="brand-subtitle">In-Call Revenue Intelligence</span>
+          </div>
+        </div>
+        <span id="hosted-mode-badge" class="brand-badge">Local Mode</span>
+      </div>
       <div class="status-display" id="status">Ready</div>
 
       <div class="control-row">
@@ -1272,6 +1389,7 @@
         </div>
         <button id="download-btn" class="download-btn hidden">Download Model</button>
       </div>
+      <div id="meeting-reminder-banner" class="reminder-banner hidden"></div>
     </div>
 
     <!-- License Modal -->
@@ -1308,6 +1426,24 @@
         </div>
         <div id="transcript-content" class="panel-content">
           <div id="transcript">Start recording to see live transcript...</div>
+        </div>
+      </div>
+
+      <!-- Meeting Radar Panel -->
+      <div class="panel-section">
+        <div class="panel-header" onclick="togglePanel('reminders')">
+          <div class="panel-title">
+            <span>📅 Meeting Radar</span>
+          </div>
+          <div class="panel-controls">
+            <button class="expand-btn" onclick="refreshHostedReminders(event)">Refresh</button>
+            <span id="reminders-collapse-icon" class="collapse-icon">▼</span>
+          </div>
+        </div>
+        <div id="reminders-content" class="panel-content">
+          <div id="reminders-list" class="reminders-list">
+            <div class="empty-state">Hosted reminders are unavailable until hosted mode is enabled.</div>
+          </div>
         </div>
       </div>
 
@@ -1438,7 +1574,7 @@
   <div id="settings-modal" class="modal-overlay">
     <div class="modal-content">
       <div class="modal-header">
-        <div class="modal-title">⚙️ AI Insights Settings</div>
+        <div class="modal-title">⚙️ Laserreach Intelli Settings</div>
         <button class="modal-close" onclick="closeSettingsModal()">&times;</button>
       </div>
       <div id="settings-status" class="settings-status" style="display: none;"></div>
@@ -1667,6 +1803,55 @@
           </div>
         </div>
 
+        <!-- Hosted Runtime -->
+        <div class="settings-section">
+          <div class="settings-section-title">Hosted Runtime (Laserreach Backend)</div>
+
+          <div class="setting-item">
+            <label class="setting-label">
+              <span>Enable Hosted Mode (Deepgram + GPT-5-mini)</span>
+              <div class="setting-checkbox">
+                <input type="checkbox" id="hostedEnabled" />
+              </div>
+            </label>
+            <div class="setting-description">Uses Laserreach backend ASR + analysis instead of local ASR/LLM.</div>
+          </div>
+
+          <div class="setting-item">
+            <label class="setting-label" for="hostedBackendUrl">Backend URL</label>
+            <input type="text" id="hostedBackendUrl" class="setting-input" placeholder="http://localhost:8788" />
+          </div>
+
+          <div class="setting-item">
+            <label class="setting-label" for="hostedTenantId">Tenant ID</label>
+            <input type="text" id="hostedTenantId" class="setting-input" placeholder="orgl" />
+          </div>
+
+          <div class="setting-item">
+            <label class="setting-label" for="hostedJwtToken">JWT Token</label>
+            <input type="password" id="hostedJwtToken" class="setting-input" placeholder="Paste ABM auth token" />
+          </div>
+
+          <div class="setting-item">
+            <label class="setting-label" for="hostedAnalysisModel">Analysis Model</label>
+            <select id="hostedAnalysisModel" class="setting-input">
+              <option value="gpt-5-mini">gpt-5-mini</option>
+              <option value="gpt-5-nano">gpt-5-nano</option>
+            </select>
+          </div>
+
+          <div class="setting-item">
+            <label class="setting-label" for="hostedLookaheadMinutes">Reminder Lookahead (minutes)</label>
+            <input type="number" id="hostedLookaheadMinutes" class="setting-input" min="5" max="240" step="5" value="30" />
+          </div>
+
+          <div class="setting-item">
+            <label class="setting-label" for="hostedDefaultPipelineId">Default Pipeline ID (optional)</label>
+            <input type="text" id="hostedDefaultPipelineId" class="setting-input" placeholder="pipeline UUID for meeting context" />
+            <div class="setting-description">Used for context when transcript does not resolve a pipeline directly.</div>
+          </div>
+        </div>
+
         <!-- LLM & Model -->
         <div class="settings-section">
           <div class="settings-section-title">LLM & Model</div>
@@ -1708,6 +1893,9 @@
     const promptEl = document.getElementById('prompt');
     const sessionsBtnEl = document.getElementById('btn-sessions');
     const goProBtnEl = document.getElementById('btn-go-pro');
+    const hostedModeBadgeEl = document.getElementById('hosted-mode-badge');
+    const meetingReminderBannerEl = document.getElementById('meeting-reminder-banner');
+    const remindersListEl = document.getElementById('reminders-list');
 
     // Initialize TranscriptBuffer for managing transcript segments
     const transcriptBuffer = new TranscriptBuffer();
@@ -1719,6 +1907,8 @@
 
     let instId;
     let currentSessionId = null;
+    let hostedConfig = null;
+    let hostedReminderTimer = null;
 
     // Force external Python ASR; mark model selection accordingly
     const selected = 'external-python';
@@ -2578,6 +2768,7 @@
     // Panel Management - Initialize first
     const panelStates = {
       transcript: false,
+      reminders: false,
       llm: false,
       insights: false,
       logs: true // Start collapsed
@@ -2950,6 +3141,7 @@
       // Set modal title
       const titles = {
         transcript: '📝 Live Transcript - Expanded View',
+        reminders: '📅 Meeting Radar - Expanded View',
         llm: '🧠 AI Chat - Expanded View',
         insights: '🔍 AI Insights - Expanded View',
         logs: '🔧 System Logs - Expanded View'
@@ -3426,6 +3618,140 @@
       });
     }
 
+    function applyHostedModeBadge(cfg) {
+      const enabled = !!(cfg && cfg.enabled && cfg.backendUrl && cfg.tenantId && cfg.jwtToken);
+      hostedModeBadgeEl.textContent = enabled ? `Hosted: ${cfg.tenantId}` : 'Local Mode';
+      hostedModeBadgeEl.style.background = enabled ? 'rgba(48, 122, 99, 0.24)' : 'rgba(88, 103, 130, 0.24)';
+      hostedModeBadgeEl.style.borderColor = enabled ? 'rgba(83, 191, 150, 0.45)' : 'rgba(140, 161, 194, 0.4)';
+      hostedModeBadgeEl.style.color = enabled ? '#a9ffd8' : '#d6e5ff';
+    }
+
+    function renderReminderItems(reminders) {
+      if (!remindersListEl) return;
+      if (!Array.isArray(reminders) || reminders.length === 0) {
+        remindersListEl.innerHTML = '<div class="empty-state">No upcoming sequence meetings in the configured lookahead window.</div>';
+        return;
+      }
+
+      remindersListEl.innerHTML = reminders.slice(0, 8).map((item) => {
+        const person = item.person_name || item.person_email || 'Unknown contact';
+        const company = item.company_name || 'Unknown company';
+        const when = item.scheduled_at ? new Date(item.scheduled_at).toLocaleString() : 'Unknown time';
+        const inMinutes = Number(item.in_minutes || 0);
+        return `
+          <div class="reminder-item">
+            <div class="reminder-item-title">${person} (${company})</div>
+            <div class="reminder-item-meta">
+              In ${inMinutes} minute${inMinutes === 1 ? '' : 's'} · ${when}<br/>
+              Pipeline: ${item.pipeline_id || 'n/a'} · ${item.type || 'event'}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function updateReminderBanner(reminders) {
+      if (!meetingReminderBannerEl) return;
+      if (!Array.isArray(reminders) || reminders.length === 0) {
+        meetingReminderBannerEl.classList.add('hidden');
+        meetingReminderBannerEl.innerHTML = '';
+        return;
+      }
+      const next = reminders[0] || {};
+      const person = next.person_name || next.person_email || 'Unknown contact';
+      const company = next.company_name || 'Unknown company';
+      const inMinutes = Number(next.in_minutes || 0);
+      const when = next.scheduled_at ? new Date(next.scheduled_at).toLocaleString() : 'Unknown time';
+      meetingReminderBannerEl.classList.remove('hidden');
+      meetingReminderBannerEl.innerHTML = `
+        <strong>Upcoming Meeting Reminder</strong><br/>
+        ${person} (${company}) in ${inMinutes} minute${inMinutes === 1 ? '' : 's'}.
+        <div class="reminder-meta">${when} · Pipeline ${next.pipeline_id || 'n/a'}</div>
+      `;
+    }
+
+    async function refreshHostedReminders(event) {
+      if (event && typeof event.stopPropagation === 'function') event.stopPropagation();
+      if (!window.electronAPI?.getHostedReminders) return;
+      try {
+        const response = await window.electronAPI.getHostedReminders();
+        if (!response || response.success === false) {
+          renderReminderItems([]);
+          updateReminderBanner([]);
+          if (response && response.error) {
+            remindersListEl.innerHTML = `<div class="empty-state">Reminder lookup failed: ${response.error}</div>`;
+          }
+          return;
+        }
+        const reminders = response.reminders || [];
+        renderReminderItems(reminders);
+        updateReminderBanner(reminders);
+      } catch (err) {
+        renderReminderItems([]);
+        updateReminderBanner([]);
+        if (remindersListEl) {
+          remindersListEl.innerHTML = `<div class="empty-state">Reminder lookup failed: ${String(err?.message || err)}</div>`;
+        }
+      }
+    }
+
+    function startHostedReminderPolling() {
+      if (hostedReminderTimer) {
+        clearInterval(hostedReminderTimer);
+        hostedReminderTimer = null;
+      }
+      if (!hostedConfig || !hostedConfig.enabled) {
+        renderReminderItems([]);
+        updateReminderBanner([]);
+        return;
+      }
+      refreshHostedReminders();
+      hostedReminderTimer = setInterval(() => {
+        refreshHostedReminders();
+      }, 60000);
+    }
+
+    async function loadHostedConfigIntoUI() {
+      if (!window.electronAPI?.getHostedConfig) return;
+      try {
+        const response = await window.electronAPI.getHostedConfig();
+        const cfg = response && response.config ? response.config : {};
+        hostedConfig = cfg;
+        applyHostedModeBadge(cfg);
+        const hostedEnabledEl = document.getElementById('hostedEnabled');
+        const hostedBackendUrlEl = document.getElementById('hostedBackendUrl');
+        const hostedTenantIdEl = document.getElementById('hostedTenantId');
+        const hostedJwtTokenEl = document.getElementById('hostedJwtToken');
+        const hostedAnalysisModelEl = document.getElementById('hostedAnalysisModel');
+        const hostedLookaheadMinutesEl = document.getElementById('hostedLookaheadMinutes');
+        const hostedDefaultPipelineIdEl = document.getElementById('hostedDefaultPipelineId');
+        if (hostedEnabledEl) hostedEnabledEl.checked = !!cfg.enabled;
+        if (hostedBackendUrlEl) hostedBackendUrlEl.value = cfg.backendUrl || 'http://localhost:8788';
+        if (hostedTenantIdEl) hostedTenantIdEl.value = cfg.tenantId || '';
+        if (hostedJwtTokenEl) hostedJwtTokenEl.value = cfg.jwtToken || '';
+        if (hostedAnalysisModelEl) hostedAnalysisModelEl.value = cfg.analysisModel || 'gpt-5-mini';
+        if (hostedLookaheadMinutesEl) hostedLookaheadMinutesEl.value = String(cfg.lookaheadMinutes || 30);
+        if (hostedDefaultPipelineIdEl) hostedDefaultPipelineIdEl.value = cfg.defaultPipelineId || '';
+        startHostedReminderPolling();
+      } catch (e) {
+        console.error('Failed to load hosted config:', e);
+      }
+    }
+
+    function getHostedConfigFromForm() {
+      const lookaheadRaw = parseInt(document.getElementById('hostedLookaheadMinutes')?.value || '30', 10);
+      const lookaheadMinutes = Math.max(5, Math.min(240, Number.isFinite(lookaheadRaw) ? lookaheadRaw : 30));
+      return {
+        enabled: !!document.getElementById('hostedEnabled')?.checked,
+        backendUrl: (document.getElementById('hostedBackendUrl')?.value || '').trim() || 'http://localhost:8788',
+        tenantId: (document.getElementById('hostedTenantId')?.value || '').trim(),
+        jwtToken: (document.getElementById('hostedJwtToken')?.value || '').trim(),
+        analysisModel: (document.getElementById('hostedAnalysisModel')?.value || 'gpt-5-mini').trim(),
+        lookaheadMinutes,
+        defaultPipelineId: (document.getElementById('hostedDefaultPipelineId')?.value || '').trim(),
+      };
+    }
+
     // Expose analysis engine globally
     window.analysisEngine = analysisEngine;
 
@@ -3444,6 +3770,7 @@
 
         // Load current settings into UI
         loadSettingsIntoUI();
+        loadHostedConfigIntoUI();
 
         // Set up event listeners
         setupSettingsEventListeners();
@@ -3472,6 +3799,7 @@
 
       // Load current settings into form
       loadSettingsIntoUI();
+      loadHostedConfigIntoUI();
 
       // Show modal
       const settingsModal = document.getElementById('settings-modal');
@@ -3564,7 +3892,7 @@
     }
 
     // Save settings from form
-    function saveSettings() {
+    async function saveSettings() {
       if (!settingsManager) return;
 
       const formData = getSettingsFromForm();
@@ -3579,6 +3907,21 @@
           showSettingsStatus({ success: true, message: 'LLM tier override saved (restart required)' });
         }
       }).catch(() => {});
+
+      // Save hosted runtime config
+      try {
+        const hostedFormConfig = getHostedConfigFromForm();
+        const hostedResp = await window.electronAPI.setHostedConfig(hostedFormConfig);
+        if (hostedResp && hostedResp.success) {
+          hostedConfig = hostedResp.config || hostedFormConfig;
+          applyHostedModeBadge(hostedConfig);
+          startHostedReminderPolling();
+        } else if (hostedResp && hostedResp.error) {
+          showSettingsStatus({ success: false, errors: [hostedResp.error] });
+        }
+      } catch (e) {
+        showSettingsStatus({ success: false, errors: [`Hosted config save failed: ${String(e?.message || e)}`] });
+      }
 
       if (result.success) {
         // Close modal after successful save

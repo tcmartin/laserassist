@@ -5,7 +5,7 @@
 
 set -e  # Exit on any error
 
-echo "🚀 Building Insighto (Optimized - No LLM Models)"
+echo "🚀 Building Laserreach Intelli (Optimized - No LLM Models)"
 echo "================================================"
 
 # Colors for output
@@ -127,8 +127,8 @@ print_status "Creating optimized build configuration..."
 
 cat > electron-builder-config.js << EOF
 const config = {
-  appId: "com.yourcompany.insighto",
-  productName: "Insighto",
+  appId: "com.laserreach.intelli",
+  productName: "Laserreach Intelli",
   directories: {
     output: "dist-app"
   },
@@ -217,18 +217,18 @@ if [ $? -eq 0 ]; then
         # Show size comparison
         echo ""
         print_status "📊 Size Analysis:"
-        if [ -f "dist-app/Insighto-1.0.0.dmg" ]; then
-            DMG_SIZE=$(du -sh dist-app/Insighto-1.0.0.dmg | cut -f1)
+        if [ -f "dist-app/Laserreach Intelli-1.0.0.dmg" ]; then
+            DMG_SIZE=$(du -sh dist-app/Laserreach\ Intelli-1.0.0.dmg | cut -f1)
             print_success "Intel DMG size: $DMG_SIZE"
         fi
-        if [ -f "dist-app/Insighto-1.0.0-arm64.dmg" ]; then
-            ARM_SIZE=$(du -sh dist-app/Insighto-1.0.0-arm64.dmg | cut -f1)
+        if [ -f "dist-app/Laserreach Intelli-1.0.0-arm64.dmg" ]; then
+            ARM_SIZE=$(du -sh dist-app/Laserreach\ Intelli-1.0.0-arm64.dmg | cut -f1)
             print_success "Apple Silicon DMG size: $ARM_SIZE"
         fi
         
         # Check app bundle size
-        if [ -d "dist-app/mac/Insighto.app" ]; then
-            APP_SIZE=$(du -sh dist-app/mac/Insighto.app | cut -f1)
+        if [ -d "dist-app/mac/Laserreach Intelli.app" ]; then
+            APP_SIZE=$(du -sh dist-app/mac/Laserreach\ Intelli.app | cut -f1)
             print_success "App bundle size: $APP_SIZE"
         fi
     fi

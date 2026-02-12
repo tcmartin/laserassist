@@ -20,6 +20,207 @@ let _asrChunkCount = 0;
 let _asrSrcRate = 16000; // renderer input sample rate
 let _resamplePhase = 0;  // fractional source position within next chunk
 let _resampleStep = 1;   // src/dst ratio
+let hostedAsrState = {
+  active: false,
+  pcmChunks: [],
+  pcmBytes: 0,
+  flushIntervalMs: 3500,
+  timer: null,
+};
+
+function getSettingsPath() {
+  try {
+    return path.join(app.getPath('userData'), 'settings.json');
+  } catch {
+    return path.join(__dirname, 'settings.json');
+  }
+}
+
+function loadRuntimeSettings() {
+  try {
+    const cfgPath = getSettingsPath();
+    if (!fs.existsSync(cfgPath)) return {};
+    return JSON.parse(fs.readFileSync(cfgPath, 'utf8')) || {};
+  } catch {
+    return {};
+  }
+}
+
+function saveRuntimeSettings(next) {
+  const cfgPath = getSettingsPath();
+  fs.writeFileSync(cfgPath, JSON.stringify(next || {}, null, 2));
+}
+
+function getHostedConfig() {
+  const cfg = loadRuntimeSettings();
+  const hosted = cfg.hosted || {};
+  return {
+    enabled: !!hosted.enabled,
+    backendUrl: String(hosted.backendUrl || 'http://localhost:8788').replace(/\/+$/, ''),
+    tenantId: String(hosted.tenantId || ''),
+    jwtToken: String(hosted.jwtToken || ''),
+    analysisModel: String(hosted.analysisModel || 'gpt-5-mini'),
+    lookaheadMinutes: Number(hosted.lookaheadMinutes || 30),
+    defaultPipelineId: String(hosted.defaultPipelineId || ''),
+  };
+}
+
+function isHostedEnabled() {
+  const cfg = getHostedConfig();
+  return !!(cfg.enabled && cfg.backendUrl && cfg.tenantId && cfg.jwtToken);
+}
+
+function buildWavBufferFromPcm16(pcmBuffer, sampleRate = 16000, channels = 1, bitsPerSample = 16) {
+  const byteRate = sampleRate * channels * (bitsPerSample / 8);
+  const blockAlign = channels * (bitsPerSample / 8);
+  const dataSize = pcmBuffer.length;
+  const buffer = Buffer.alloc(44 + dataSize);
+  buffer.write('RIFF', 0);
+  buffer.writeUInt32LE(36 + dataSize, 4);
+  buffer.write('WAVE', 8);
+  buffer.write('fmt ', 12);
+  buffer.writeUInt32LE(16, 16);
+  buffer.writeUInt16LE(1, 20);
+  buffer.writeUInt16LE(channels, 22);
+  buffer.writeUInt32LE(sampleRate, 24);
+  buffer.writeUInt32LE(byteRate, 28);
+  buffer.writeUInt16LE(blockAlign, 32);
+  buffer.writeUInt16LE(bitsPerSample, 34);
+  buffer.write('data', 36);
+  buffer.writeUInt32LE(dataSize, 40);
+  pcmBuffer.copy(buffer, 44);
+  return buffer;
+}
+
+async function postHostedTranscribeWav(wavBuffer) {
+  const cfg = getHostedConfig();
+  const resp = await fetch(`${cfg.backendUrl}/api/abm/intelli/transcribe`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${cfg.jwtToken}`,
+      'X-Org-ID': cfg.tenantId,
+      'Content-Type': 'audio/wav',
+    },
+    body: wavBuffer,
+  });
+  if (!resp.ok) {
+    const txt = await resp.text();
+    throw new Error(`Hosted transcribe failed (${resp.status}): ${txt}`);
+  }
+  return resp.json();
+}
+
+async function flushHostedAsrChunk(force = false) {
+  try {
+    if (!hostedAsrState.active) return;
+    if (!hostedAsrState.pcmChunks.length) return;
+    if (!force && hostedAsrState.pcmBytes < 32000) return; // ~1s at 16k mono int16
+
+    const pcm = Buffer.concat(hostedAsrState.pcmChunks);
+    hostedAsrState.pcmChunks = [];
+    hostedAsrState.pcmBytes = 0;
+    const wav = buildWavBufferFromPcm16(pcm, 16000, 1, 16);
+    const out = await postHostedTranscribeWav(wav);
+    const text = String(out?.transcript || '').trim();
+    if (text && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('asr-message', { op: 'final', text });
+    }
+  } catch (err) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('asr-message', { op: 'error', message: String(err?.message || err) });
+    }
+  }
+}
+
+function startHostedAsrLoop() {
+  if (hostedAsrState.timer) {
+    clearInterval(hostedAsrState.timer);
+    hostedAsrState.timer = null;
+  }
+  hostedAsrState.timer = setInterval(() => {
+    flushHostedAsrChunk(false).catch(() => {});
+  }, hostedAsrState.flushIntervalMs);
+}
+
+function stopHostedAsrLoop() {
+  if (hostedAsrState.timer) {
+    clearInterval(hostedAsrState.timer);
+    hostedAsrState.timer = null;
+  }
+}
+
+async function postHostedAnalyze(body) {
+  const cfg = getHostedConfig();
+  const resp = await fetch(`${cfg.backendUrl}/api/abm/intelli/analyze`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${cfg.jwtToken}`,
+      'X-Org-ID': cfg.tenantId,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body || {}),
+  });
+  if (!resp.ok) {
+    const txt = await resp.text();
+    throw new Error(`Hosted analyze failed (${resp.status}): ${txt}`);
+  }
+  return resp.json();
+}
+
+async function runHostedChat(payload) {
+  const cfg = getHostedConfig();
+  const prompt = String(payload?.prompt || '').trim();
+  const transcriptContext = String(payload?.transcriptContext || '').trim();
+  const transcript = transcriptContext || prompt;
+  const out = await postHostedAnalyze({
+    transcript,
+    prompt,
+    analysis_type: 'full',
+    model: cfg.analysisModel || 'gpt-5-mini',
+    max_completion_tokens: 8000,
+    pipeline_id: cfg.defaultPipelineId || undefined,
+  });
+  const responseText =
+    (typeof out?.text === 'string' && out.text.trim()) ||
+    (out?.parsed ? JSON.stringify(out.parsed, null, 2) : '') ||
+    'No response generated.';
+  return { id: payload?.id, response: responseText };
+}
+
+async function runHostedAnalysis(payload) {
+  const cfg = getHostedConfig();
+  const transcript = String(payload?.transcript || '').trim();
+  const analysisType = payload?.analysisType || ['summary', 'suggestions'];
+  const firstType = Array.isArray(analysisType)
+    ? (analysisType.length ? analysisType[0] : 'full')
+    : String(analysisType || 'full');
+  const out = await postHostedAnalyze({
+    transcript,
+    analysis_type: firstType || 'full',
+    prompt: payload?.context?.customPrompt || undefined,
+    model: cfg.analysisModel || 'gpt-5-mini',
+    max_completion_tokens: 12000,
+    pipeline_id: cfg.defaultPipelineId || undefined,
+  });
+  const parsed = out?.parsed || {};
+  const results = {
+    summary:
+      parsed.summary ||
+      (typeof out?.text === 'string' ? out.text : 'No summary generated'),
+    suggestions: {
+      actionItems: parsed.actionItems || parsed.next_best_actions || [],
+      questions: parsed.questions || parsed.discovery_questions || [],
+      topics: parsed.topics || [],
+      activities: parsed.activities || [],
+    },
+  };
+  return {
+    id: payload?.id,
+    type: 'analysis-response',
+    results,
+    timeRange: payload?.timeRange,
+  };
+}
 
 function resampleTo16k(f32) {
   if (!_asrSrcRate || _asrSrcRate === 16000) return f32;
@@ -83,14 +284,10 @@ function toggleWindowVisibility() {
 }
 
 function detectPreferredTierFromSettingsOrHardware() {
-  // Read override from user settings file if present
   try {
-    const cfgPath = path.join(app.getPath('userData'), 'settings.json');
-    if (fs.existsSync(cfgPath)) {
-      const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
-      if (cfg && cfg.llmTierOverride && ['low','high','auto'].includes(cfg.llmTierOverride)) {
-        if (cfg.llmTierOverride !== 'auto') return cfg.llmTierOverride;
-      }
+    const cfg = loadRuntimeSettings();
+    if (cfg && cfg.llmTierOverride && ['low', 'high', 'auto'].includes(cfg.llmTierOverride)) {
+      if (cfg.llmTierOverride !== 'auto') return cfg.llmTierOverride;
     }
   } catch (e) { /* ignore */ }
   return modelDownloader.detectHardwareTier();
@@ -150,7 +347,6 @@ function createOverlay() {
   win.loadFile(path.join(__dirname, 'index.html'));
   win.once('ready-to-show', () => {
     win.show();
-    win.webContents.openDevTools({ mode: 'detach' });
     
     // Register global shortcut for show/hide toggle
     registerGlobalShortcut();
@@ -164,26 +360,29 @@ function createOverlay() {
       console.error('❌ Failed to initialize session storage', e);
     }
 
-    // Hook ASR bridge events to renderer (bridge already started early)
+    // ASR mode bootstrapping
     try {
-      asrBridge = asrBridge || new ASRBridge(app, console);
-      // Forward ASR events to renderer
-      asrBridge.on('partial', (msg) => {
-        win.webContents.send('asr-message', msg);
-      });
-      asrBridge.on('final', (msg) => {
-        win.webContents.send('asr-message', msg);
-      });
-      asrBridge.on('error', (msg) => {
-        win.webContents.send('asr-message', { op: 'error', ...msg });
-      });
-      asrBridge.on('status', (msg) => {
-        win.webContents.send('asr-message', { op: 'status', ...msg });
-      });
-      console.log('✅ ASR bridge ready');
-      win.webContents.send('asr-message', { op: 'status', message: 'External ASR starting…\n' });
+      if (isHostedEnabled()) {
+        win.webContents.send('asr-message', { op: 'status', message: 'Hosted ASR mode enabled (Deepgram via Laserreach backend)\n' });
+      } else {
+        asrBridge = asrBridge || new ASRBridge(app, console);
+        asrBridge.on('partial', (msg) => {
+          win.webContents.send('asr-message', msg);
+        });
+        asrBridge.on('final', (msg) => {
+          win.webContents.send('asr-message', msg);
+        });
+        asrBridge.on('error', (msg) => {
+          win.webContents.send('asr-message', { op: 'error', ...msg });
+        });
+        asrBridge.on('status', (msg) => {
+          win.webContents.send('asr-message', { op: 'status', ...msg });
+        });
+        console.log('✅ ASR bridge ready');
+        win.webContents.send('asr-message', { op: 'status', message: 'External ASR starting…\n' });
+      }
     } catch (e) {
-      console.error('❌ Failed to initialize ASR bridge', e);
+      console.error('❌ Failed to initialize ASR', e);
     }
 
     // Initialize license manager
@@ -201,43 +400,51 @@ function createOverlay() {
       console.error('❌ Failed to initialize license manager', e);
     }
 
-    // Select LLM tier and model
-    const preferredTier = detectPreferredTierFromSettingsOrHardware();
-    selectedLLMModel = modelDownloader.getModelInfo(preferredTier);
-
-    // Check if selected model exists and download if needed
-    if (!modelDownloader.modelExists(preferredTier)) {
+    if (isHostedEnabled()) {
+      const hc = getHostedConfig();
+      selectedLLMModel = { name: hc.analysisModel || 'gpt-5-mini', tier: 'hosted', filename: hc.analysisModel || 'gpt-5-mini' };
       win.webContents.send('model-status', {
-        state: 'checking',
-        message: `Checking for LLM model (${selectedLLMModel.name})...`,
-        tier: selectedLLMModel.tier,
-        filename: selectedLLMModel.filename
+        state: 'ready',
+        message: `Hosted analysis enabled (${selectedLLMModel.name})`,
+        tier: 'hosted',
       });
-      
-      // Start download process
-      modelDownloader.downloadModel(preferredTier)
-        .then(() => {
-          win.webContents.send('model-status', {
-            state: 'loading',
-            message: `Model downloaded, initializing LLM (${selectedLLMModel.name})...`,
-            tier: selectedLLMModel.tier
-          });
-          startLLMWorker(selectedLLMModel.filename);
-        })
-        .catch(err => {
-          win.webContents.send('model-status', {
-            state: 'error',
-            message: `Failed to download model: ${err.message}`
-          });
-          console.error('Model download failed:', err);
-        });
     } else {
-      win.webContents.send('model-status', {
-        state: 'loading',
-        message: `Model found, initializing LLM (${selectedLLMModel.name})...`,
-        tier: selectedLLMModel.tier
-      });
-      startLLMWorker(selectedLLMModel.filename);
+      // Select LLM tier and model
+      const preferredTier = detectPreferredTierFromSettingsOrHardware();
+      selectedLLMModel = modelDownloader.getModelInfo(preferredTier);
+
+      // Check if selected model exists and download if needed
+      if (!modelDownloader.modelExists(preferredTier)) {
+        win.webContents.send('model-status', {
+          state: 'checking',
+          message: `Checking for LLM model (${selectedLLMModel.name})...`,
+          tier: selectedLLMModel.tier,
+          filename: selectedLLMModel.filename
+        });
+        modelDownloader.downloadModel(preferredTier)
+          .then(() => {
+            win.webContents.send('model-status', {
+              state: 'loading',
+              message: `Model downloaded, initializing LLM (${selectedLLMModel.name})...`,
+              tier: selectedLLMModel.tier
+            });
+            startLLMWorker(selectedLLMModel.filename);
+          })
+          .catch(err => {
+            win.webContents.send('model-status', {
+              state: 'error',
+              message: `Failed to download model: ${err.message}`
+            });
+            console.error('Model download failed:', err);
+          });
+      } else {
+        win.webContents.send('model-status', {
+          state: 'loading',
+          message: `Model found, initializing LLM (${selectedLLMModel.name})...`,
+          tier: selectedLLMModel.tier
+        });
+        startLLMWorker(selectedLLMModel.filename);
+      }
     }
 
     // Native transcriber disabled: external Python ASR is the single source of transcription
@@ -245,6 +452,14 @@ function createOverlay() {
 
   // Handle manual download request from UI
   ipcMain.on('download-model', () => {
+    if (isHostedEnabled()) {
+      win.webContents.send('model-status', {
+        state: 'ready',
+        message: 'Hosted mode enabled; local model download is not required.',
+        tier: 'hosted',
+      });
+      return;
+    }
     const preferredTier = detectPreferredTierFromSettingsOrHardware();
     selectedLLMModel = modelDownloader.getModelInfo(preferredTier);
     modelDownloader.downloadModel(preferredTier)
@@ -271,18 +486,34 @@ function createOverlay() {
       _asrSrcRate = Math.max(8000, Math.min(192000, Number(opts?.sampleRate) || 16000));
       _resampleStep = _asrSrcRate / 16000;
       _resamplePhase = 0;
-      const startOpts = {
-        sampleRate: 16000,
-        window: opts?.window || 5,
-        updateMs: opts?.updateMs || 5000,
-      };
-      if (opts?.source) startOpts.source = opts.source;
-      if (typeof opts?.device_index !== 'undefined') startOpts.device_index = opts.device_index;
-      if (asrBridge && asrBridge.isRunning()) {
-        asrBridge.setConfig(startOpts);
+      hostedAsrState.active = isHostedEnabled();
+      hostedAsrState.pcmChunks = [];
+      hostedAsrState.pcmBytes = 0;
+      hostedAsrState.flushIntervalMs = Math.max(1500, Number(opts?.updateMs) || 3500);
+
+      if (hostedAsrState.active) {
+        startHostedAsrLoop();
+        if (mainWindow) {
+          mainWindow.webContents.send('asr-message', {
+            op: 'status',
+            message: 'Hosted ASR active (Deepgram via backend)\n',
+          });
+        }
       } else {
-        asrBridge = asrBridge || new ASRBridge(app, console);
-        asrBridge.start(startOpts);
+        stopHostedAsrLoop();
+        const startOpts = {
+          sampleRate: 16000,
+          window: opts?.window || 5,
+          updateMs: opts?.updateMs || 5000,
+        };
+        if (opts?.source) startOpts.source = opts.source;
+        if (typeof opts?.device_index !== 'undefined') startOpts.device_index = opts.device_index;
+        if (asrBridge && asrBridge.isRunning()) {
+          asrBridge.setConfig(startOpts);
+        } else {
+          asrBridge = asrBridge || new ASRBridge(app, console);
+          asrBridge.start(startOpts);
+        }
       }
     } catch (err) {
       console.error('ASR start failed', err);
@@ -294,13 +525,31 @@ function createOverlay() {
 
   // Do not stop the helper on UI stop; just stop sending audio.
   ipcMain.on('asr-stop', () => {
-    console.log('[ASR] UI requested stop streaming (helper kept running)');
+    hostedAsrState.active = false;
+    flushHostedAsrChunk(true).catch(() => {});
+    stopHostedAsrLoop();
+    hostedAsrState.pcmChunks = [];
+    hostedAsrState.pcmBytes = 0;
+    console.log('[ASR] UI requested stop streaming');
   });
 
   // Handle LLM prompts (existing chat functionality with transcript context)
   ipcMain.on('llm-prompt', (_e, payload) => {
+    if (isHostedEnabled()) {
+      runHostedChat(payload)
+        .then((msg) => {
+          BrowserWindow.getAllWindows().forEach(w => w.webContents.send('llm-response', msg));
+        })
+        .catch((err) => {
+          BrowserWindow.getAllWindows().forEach(w => w.webContents.send('llm-response', {
+            id: payload?.id,
+            error: String(err?.message || err),
+          }));
+        });
+      return;
+    }
+
     if (llmWorker) {
-      // Ensure backward compatibility by setting type to 'chat' if not specified
       const message = { type: 'chat', ...payload };
       llmWorker.postMessage(message);
     } else {
@@ -313,6 +562,19 @@ function createOverlay() {
 
   // Handle transcript context requests for chat
   ipcMain.on('llm-chat-with-context', (_e, payload) => {
+    if (isHostedEnabled()) {
+      runHostedChat(payload)
+        .then((msg) => {
+          BrowserWindow.getAllWindows().forEach(w => w.webContents.send('llm-response', msg));
+        })
+        .catch((err) => {
+          BrowserWindow.getAllWindows().forEach(w => w.webContents.send('llm-response', {
+            id: payload?.id,
+            error: String(err?.message || err),
+          }));
+        });
+      return;
+    }
     if (llmWorker) {
       const message = { type: 'chat', ...payload };
       llmWorker.postMessage(message);
@@ -326,6 +588,20 @@ function createOverlay() {
 
   // Handle analysis requests (new functionality)
   ipcMain.on('llm-analyze', (_e, payload) => {
+    if (isHostedEnabled()) {
+      runHostedAnalysis(payload)
+        .then((msg) => {
+          BrowserWindow.getAllWindows().forEach(w => w.webContents.send('llm-analysis-response', msg));
+        })
+        .catch((err) => {
+          BrowserWindow.getAllWindows().forEach(w => w.webContents.send('llm-analysis-response', {
+            id: payload?.id,
+            type: 'analysis-error',
+            error: String(err?.message || err),
+          }));
+        });
+      return;
+    }
     if (llmWorker) {
       const message = { type: 'analyze-transcript', ...payload };
       llmWorker.postMessage(message);
@@ -550,7 +826,7 @@ function createOverlay() {
   // LLM tier override IPC handlers
   ipcMain.handle('llm-get-tier-override', async () => {
     try {
-      const cfgPath = path.join(app.getPath('userData'), 'settings.json');
+      const cfgPath = getSettingsPath();
       if (fs.existsSync(cfgPath)) {
         const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
         return { tier: cfg.llmTierOverride || 'auto' };
@@ -562,7 +838,7 @@ function createOverlay() {
     try {
       const allowed = ['auto','low','high'];
       if (!allowed.includes(tier)) return { success: false, error: 'invalid tier' };
-      const cfgPath = path.join(app.getPath('userData'), 'settings.json');
+      const cfgPath = getSettingsPath();
       let cfg = {};
       if (fs.existsSync(cfgPath)) {
         try { cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8')); } catch (_) {}
@@ -571,6 +847,50 @@ function createOverlay() {
       fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));
       return { success: true };
     } catch (e) { return { success: false, error: e.message }; }
+  });
+
+  // Hosted backend configuration (Deepgram + GPT-5-mini via Laserreach backend)
+  ipcMain.handle('hosted-get-config', async () => {
+    try {
+      return { success: true, config: getHostedConfig() };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+  ipcMain.handle('hosted-set-config', async (_e, config) => {
+    try {
+      const current = loadRuntimeSettings();
+      current.hosted = {
+        ...(current.hosted || {}),
+        ...(config || {}),
+      };
+      saveRuntimeSettings(current);
+      return { success: true, config: getHostedConfig() };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+  ipcMain.handle('hosted-get-reminders', async () => {
+    try {
+      const cfg = getHostedConfig();
+      if (!cfg.enabled) return { success: true, reminders: [] };
+      const resp = await fetch(
+        `${cfg.backendUrl}/api/abm/intelli/reminders?lookahead_minutes=${encodeURIComponent(String(cfg.lookaheadMinutes || 30))}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${cfg.jwtToken}`,
+            'X-Org-ID': cfg.tenantId,
+          },
+        },
+      );
+      if (!resp.ok) {
+        const txt = await resp.text();
+        return { success: false, error: `HTTP ${resp.status}: ${txt}` };
+      }
+      return await resp.json();
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
   });
 
   // Sessions search (full-text), Pro-gated unless bypass enabled
@@ -676,6 +996,23 @@ app.whenReady().then(() => {
 
   audioWorker = new Worker(path.join(__dirname, 'audio-worker.js'));
   audioWorker.on('message', (b64) => {
+    if (hostedAsrState.active && isHostedEnabled()) {
+      try {
+        const pcm = Buffer.from(String(b64 || ''), 'base64');
+        if (pcm.length > 0) {
+          hostedAsrState.pcmChunks.push(pcm);
+          hostedAsrState.pcmBytes += pcm.length;
+          if (hostedAsrState.pcmBytes >= 128000) {
+            flushHostedAsrChunk(false).catch(() => {});
+          }
+        }
+      } catch (e) {
+        if (mainWindow) {
+          mainWindow.webContents.send('asr-message', { op: 'error', message: String(e?.message || e) });
+        }
+      }
+      return;
+    }
     if (asrBridge) {
       asrBridge.sendBase64(b64);
     }
@@ -726,19 +1063,23 @@ app.whenReady().then(() => {
   // Removed duplicate asr-start/asr-stop handlers (above is the single source)
   // Early ASR start: create and start helper before window
   try {
-    if (!asrBridge) {
-      asrBridge = new ASRBridge(app, console);
-      console.log('✅ ASR bridge created (early init)');
-    }
-    if (!asrBridge.isRunning()) {
-      asrBridge.start({ sampleRate: 16000, window: 5, updateMs: 5000 });
-      console.log('✅ External ASR starting (background)');
+    if (!isHostedEnabled()) {
+      if (!asrBridge) {
+        asrBridge = new ASRBridge(app, console);
+        console.log('✅ ASR bridge created (early init)');
+      }
+      if (!asrBridge.isRunning()) {
+        asrBridge.start({ sampleRate: 16000, window: 5, updateMs: 5000 });
+        console.log('✅ External ASR starting (background)');
+      }
+    } else {
+      console.log('✅ Hosted ASR mode configured; skipping local ASR helper startup');
     }
   } catch (e) {
     console.error('❌ Early ASR init failed', e);
   }
   // Set the app name
-  app.setName('Insighto');
+  app.setName('Laserreach Intelli');
   
   // Set app icon for dock and system with error handling
   if (process.platform === 'darwin') {
@@ -781,6 +1122,7 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
+  try { hostedAsrState.active = false; stopHostedAsrLoop(); } catch {}
   if (llmWorker) {
     llmWorker.terminate();
   }
@@ -795,6 +1137,7 @@ app.on('window-all-closed', () => {
 
 // Handle app termination
 app.on('before-quit', () => {
+  try { hostedAsrState.active = false; stopHostedAsrLoop(); } catch {}
   if (llmWorker) {
     llmWorker.terminate();
   }

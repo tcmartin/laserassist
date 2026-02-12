@@ -1,8 +1,8 @@
 {
-  "name": "insighto",
+  "name": "laserreach-intelli",
   "version": "1.0.0",
-  "description": "AI-powered transcription and analysis tool",
-  "author": "Your Name",
+  "description": "Laserreach Intelli in-call revenue intelligence desktop app",
+  "author": "Laserreach",
   "main": "main.js",
   "scripts": {
     "start": "npx electron . --user-data-dir=./.temp-user-data",
@@ -14,11 +14,16 @@
     "build-mac": "electron-builder --mac",
     "build-electron-only": "electron-builder",
     "dist": "electron-builder --publish=never",
-    "test-audio": "node test-audio-performance.js"
+    "test-audio": "node test-audio-performance.js",
+    "build-check": "electron-builder --dir --publish=never",
+    "build-check-mac": "electron-builder --dir --mac --arm64 --publish=never",
+    "build-check-linux": "electron-builder --dir --linux --x64 --publish=never",
+    "build-check-win": "electron-builder --dir --win --x64 --publish=never",
+    "build-check-all": "npm run build-check-mac && npm run build-check-linux && npm run build-check-win"
   },
   "build": {
-    "appId": "com.yourcompany.insighto",
-    "productName": "Insighto",
+    "appId": "com.laserreach.intelli",
+    "productName": "Laserreach Intelli",
     "directories": {
       "output": "dist"
     },
@@ -29,6 +34,27 @@
     "mac": {
       "icon": "app-icon.icns",
       "category": "public.app-category.productivity"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "dir",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "dir",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Office"
     }
   },
   "dependencies": {

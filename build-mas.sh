@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# MAS-specific build script for Insighto
+# MAS-specific build script for Laserreach Intelli
 # This script builds the App Store version WITHOUT MCP functionality
 
 set -e  # Exit on any error
 
-echo "🏪 Building Insighto for Mac App Store (MCP Disabled)"
+echo "🏪 Building Laserreach Intelli for Mac App Store (MCP Disabled)"
 echo "===================================================="
 
 # Colors for output
@@ -89,8 +89,8 @@ print_status "Creating MAS build configuration..."
 
 cat > electron-builder-mas.js << EOF
 const config = {
-  appId: "com.yourcompany.insighto",
-  productName: "Insighto",
+  appId: "com.laserreach.intelli",
+  productName: "Laserreach Intelli",
   directories: {
     output: "dist-mas"
   },
@@ -160,14 +160,14 @@ if [ $? -eq 0 ]; then
         # Show size analysis
         echo ""
         print_status "📊 MAS Build Analysis:"
-        if [ -f "dist-mas/Insighto-1.0.0.pkg" ]; then
-            PKG_SIZE=$(du -sh dist-mas/Insighto-1.0.0.pkg | cut -f1)
+        if [ -f "dist-mas/Laserreach Intelli-1.0.0.pkg" ]; then
+            PKG_SIZE=$(du -sh dist-mas/Laserreach\ Intelli-1.0.0.pkg | cut -f1)
             print_success "MAS package size: $PKG_SIZE"
         fi
         
         # Check app bundle size
-        if [ -d "dist-mas/mas/Insighto.app" ]; then
-            APP_SIZE=$(du -sh dist-mas/mas/Insighto.app | cut -f1)
+        if [ -d "dist-mas/mas/Laserreach Intelli.app" ]; then
+            APP_SIZE=$(du -sh dist-mas/mas/Laserreach\ Intelli.app | cut -f1)
             print_success "App bundle size: $APP_SIZE"
         fi
     fi

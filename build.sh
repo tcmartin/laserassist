@@ -5,7 +5,7 @@
 
 set -e  # Exit on any error
 
-echo "🚀 Building Insighto with ASR Server"
+echo "🚀 Building Laserreach Intelli with ASR Server"
 echo "===================================="
 
 # Colors for output
@@ -112,8 +112,8 @@ print_status "Updating build configuration..."
 # Create a temporary build config that includes the ASR binary
 cat > electron-builder-config.js << EOF
 const config = {
-  appId: "com.yourcompany.insighto",
-  productName: "Insighto",
+  appId: "com.laserreach.intelli",
+  productName: "Laserreach Intelli",
   directories: {
     output: "dist-app"
   },
