@@ -222,6 +222,60 @@ test('HostedApiClient retries localhost network failures via 127.0.0.1 fallback'
   close();
 });
 
+test('HostedApiClient retries websocket connect from ::1 to IPv4 localhost', async () => {
+  const requests = [];
+  const server = http.createServer(async (req, res) => {
+    const chunks = [];
+    req.on('data', (c) => chunks.push(c));
+    req.on('end', () => {
+      requests.push({ method: req.method, url: req.url, body: Buffer.concat(chunks) });
+      res.statusCode = 404;
+      res.end('not found');
+    });
+  });
+
+  const wss = new WebSocketServer({ noServer: true });
+  server.on('upgrade', (req, socket, head) => {
+    if (!req.url.startsWith('/api/abm/intelli/transcribe/ws')) {
+      socket.destroy();
+      return;
+    }
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      ws.on('message', (raw) => {
+        const msg = JSON.parse(String(raw || '{}'));
+        ws.send(JSON.stringify({
+          op: 'transcript',
+          request_id: msg.request_id,
+          success: true,
+          transcript: 'ipv4 fallback transcript',
+          provider: 'deepgram',
+          confidence: 0.99,
+        }));
+      });
+    });
+  });
+
+  try {
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const port = server.address().port;
+    const cfg = {
+      backendUrl: `http://[::1]:${port}`,
+      tenantId: 'orgl',
+      jwtToken: 'token123',
+    };
+    const client = new HostedApiClient({ getConfig: () => cfg, fetchImpl: fetch });
+
+    const out = await client.transcribeWav(Buffer.from('wav_data'));
+    assert.equal(out.success, true);
+    assert.equal(out.transcript, 'ipv4 fallback transcript');
+
+    await client.closeAsrStream();
+  } finally {
+    wss.close();
+    server.close();
+  }
+});
+
 test('HostedApiClient surfaces path and backend in network errors', async () => {
   const cfg = {
     backendUrl: 'http://localhost:65534',

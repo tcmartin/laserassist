@@ -20,23 +20,35 @@ function buildFallbackUrls(url) {
 
   try {
     const parsed = new URL(url);
-    const host = parsed.hostname;
-    const isLocal = host === 'localhost' || host === '127.0.0.1';
+    const host = String(parsed.hostname || '');
+    const hostNormalized = host.replace(/^\[|\]$/g, '');
+    const isLocal = hostNormalized === 'localhost' || hostNormalized === '127.0.0.1' || hostNormalized === '::1';
     if (!isLocal) return out;
 
-    if (host === 'localhost') {
+    if (hostNormalized === 'localhost') {
       const alt = new URL(parsed.toString());
       alt.hostname = '127.0.0.1';
       pushUnique(alt.toString());
-    } else if (host === '127.0.0.1') {
+    } else if (hostNormalized === '127.0.0.1') {
       const alt = new URL(parsed.toString());
       alt.hostname = 'localhost';
       pushUnique(alt.toString());
+    } else if (hostNormalized === '::1') {
+      const altV4 = new URL(parsed.toString());
+      altV4.hostname = '127.0.0.1';
+      pushUnique(altV4.toString());
+      const altLocalhost = new URL(parsed.toString());
+      altLocalhost.hostname = 'localhost';
+      pushUnique(altLocalhost.toString());
     }
 
     if (parsed.protocol === 'https:') {
       const alt = new URL(parsed.toString());
       alt.protocol = 'http:';
+      pushUnique(alt.toString());
+    } else if (parsed.protocol === 'wss:') {
+      const alt = new URL(parsed.toString());
+      alt.protocol = 'ws:';
       pushUnique(alt.toString());
     }
   } catch (_) {
@@ -144,9 +156,10 @@ class HostedApiClient {
       if (state.ready) return state.ready;
     }
 
-    const url = this._buildSocketUrl(path);
-    state.ready = new Promise((resolve, reject) => {
+    const urls = buildFallbackUrls(this._buildSocketUrl(path));
+    const connectOne = (url) => new Promise((resolve, reject) => {
       let done = false;
+      let opened = false;
       const finish = (fn, value) => {
         if (done) return;
         done = true;
@@ -165,6 +178,7 @@ class HostedApiClient {
       };
 
       ws.on('open', () => {
+        opened = true;
         finish(resolve, undefined);
       });
 
@@ -197,19 +211,46 @@ class HostedApiClient {
 
       ws.on('error', (err) => {
         const reason = `${kind}_ws_error:${String(err?.message || err)}`;
-        clearPending(reason);
         state.socket = null;
-        state.ready = null;
-        state.disabledUntil = Date.now() + 10000;
+        if (opened) {
+          clearPending(reason);
+          state.ready = null;
+          state.disabledUntil = Date.now() + 10000;
+        } else {
+          try {
+            ws.close();
+          } catch (_) {
+            // no-op
+          }
+        }
         finish(reject, new Error(reason));
       });
 
       ws.on('close', () => {
-        clearPending(`${kind}_ws_closed`);
         state.socket = null;
-        state.ready = null;
+        if (opened) {
+          clearPending(`${kind}_ws_closed`);
+          state.ready = null;
+        } else {
+          finish(reject, new Error(`${kind}_ws_closed_during_connect`));
+        }
       });
     });
+
+    state.ready = (async () => {
+      let lastError = null;
+      for (const url of urls) {
+        try {
+          await connectOne(url);
+          state.disabledUntil = 0;
+          return;
+        } catch (err) {
+          lastError = err;
+        }
+      }
+      state.disabledUntil = Date.now() + 10000;
+      throw lastError || new Error(`${kind}_ws_error:connect_failed`);
+    })();
 
     try {
       await state.ready;
