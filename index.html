@@ -976,7 +976,7 @@
 
       API.onASRMessage((msg) => {
         if (!msg) return;
-        if (msg.op === 'transcript' && msg.text) {
+        if ((msg.op === 'transcript' || msg.op === 'final') && msg.text) {
           const text = String(msg.text).trim();
           if (!text) return;
           state.transcriptSegments.push(text);
@@ -1009,6 +1009,18 @@
 
       API.onResponse((msg) => {
         if (msg?.error) showToast(msg.error, 'error');
+      });
+
+      API.onStatus((msg) => {
+        if (!msg) return;
+        if (msg.type === 'analysis-status') {
+          const status = String(msg.status || '').toLowerCase();
+          if (status === 'running') {
+            setHeadline('Laserreach Intelli', 'Analyzing live call context...');
+          } else if (status === 'done') {
+            updateMeetingHeadline();
+          }
+        }
       });
 
       API.onModelStatus((status) => {

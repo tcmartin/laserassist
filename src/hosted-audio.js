@@ -149,7 +149,7 @@ class HostedAudioTranscriber {
       const out = await this.transcribeFn(wav);
       const transcript = String(out?.transcript || '').trim();
       if (transcript) {
-        this.onTranscript({ op: 'final', text: transcript });
+        this.onTranscript({ op: 'transcript', text: transcript });
       }
     } catch (err) {
       this.onError({ op: 'error', message: `ASR transcribe failure: ${String(err.message || err)}` });

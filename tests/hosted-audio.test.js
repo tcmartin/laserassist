@@ -32,11 +32,15 @@ test('resampleTo16k downsamples from 48k', () => {
 
 test('HostedAudioTranscriber emits transcript and no ASR errors in happy path', async () => {
   const transcripts = [];
+  const ops = [];
   const errors = [];
 
   const transcriber = new HostedAudioTranscriber({
     transcribeFn: async () => ({ transcript: 'captured sentence' }),
-    onTranscript: (msg) => transcripts.push(msg.text),
+    onTranscript: (msg) => {
+      ops.push(msg.op);
+      transcripts.push(msg.text);
+    },
     onError: (msg) => errors.push(msg.message),
     flushIntervalMs: 50,
     minBytes: 4000,
@@ -57,5 +61,6 @@ test('HostedAudioTranscriber emits transcript and no ASR errors in happy path', 
 
   assert.equal(errors.length, 0);
   assert.ok(transcripts.length >= 1);
+  assert.equal(ops[0], 'transcript');
   assert.equal(transcripts[0], 'captured sentence');
 });

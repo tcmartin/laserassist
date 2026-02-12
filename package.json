@@ -56,7 +56,9 @@
       "category": "Office"
     }
   },
-  "dependencies": {},
+  "dependencies": {
+    "ws": "^8.19.0"
+  },
   "devDependencies": {
     "electron": "^26.0.0",
     "electron-builder": "^24.13.3"

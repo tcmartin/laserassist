@@ -1,14 +1,17 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('http');
+const { WebSocketServer } = require('ws');
 
 const { HostedApiClient } = require('../src/hosted-client');
 const { HostedAudioTranscriber } = require('../src/hosted-audio');
 
 function createMockBackend() {
   const calls = {
-    transcribe: 0,
-    analyze: 0,
+    transcribeHttp: 0,
+    analyzeHttp: 0,
+    transcribeWs: 0,
+    analyzeWs: 0,
     reminders: 0,
     sessions: 0,
   };
@@ -39,7 +42,7 @@ function createMockBackend() {
       }
 
       if (req.url === '/api/abm/intelli/transcribe') {
-        calls.transcribe += 1;
+        calls.transcribeHttp += 1;
         assert.ok(body.length > 44, 'WAV payload should include audio body');
         assert.equal(body.slice(0, 4).toString('ascii'), 'RIFF');
         res.setHeader('Content-Type', 'application/json');
@@ -48,7 +51,7 @@ function createMockBackend() {
       }
 
       if (req.url === '/api/abm/intelli/analyze') {
-        calls.analyze += 1;
+        calls.analyzeHttp += 1;
         const parsed = JSON.parse(body.toString('utf8'));
         assert.ok(parsed.transcript.includes('pricing'));
         assert.ok(parsed.max_completion_tokens);
@@ -97,11 +100,79 @@ function createMockBackend() {
     });
   });
 
-  return { server, calls };
+  const asrWss = new WebSocketServer({ noServer: true });
+  asrWss.on('connection', (ws) => {
+    ws.on('message', (raw) => {
+      const msg = JSON.parse(String(raw || '{}'));
+      calls.transcribeWs += 1;
+      ws.send(JSON.stringify({
+        op: 'transcript',
+        request_id: msg.request_id,
+        success: true,
+        transcript: 'prospect asked about pricing and security',
+        provider: 'deepgram',
+        confidence: 0.98,
+      }));
+    });
+  });
+
+  const analysisWss = new WebSocketServer({ noServer: true });
+  analysisWss.on('connection', (ws) => {
+    ws.on('message', (raw) => {
+      const msg = JSON.parse(String(raw || '{}'));
+      calls.analyzeWs += 1;
+      ws.send(JSON.stringify({
+        op: 'analysis_status',
+        request_id: msg.request_id,
+        success: true,
+        status: 'running',
+        message: 'running',
+      }));
+      ws.send(JSON.stringify({
+        op: 'analysis_status',
+        request_id: msg.request_id,
+        success: true,
+        status: 'done',
+        message: 'done',
+      }));
+      ws.send(JSON.stringify({
+        op: 'analysis_result',
+        request_id: msg.request_id,
+        success: true,
+        text: 'analysis complete',
+        parsed: {
+          summary: 'Prospect cares about pricing and security sign-off.',
+          next_best_actions: ['Show enterprise security controls', 'Share ROI case study'],
+        },
+      }));
+    });
+  });
+
+  server.on('upgrade', (req, socket, head) => {
+    if (String(req.url || '').startsWith('/api/abm/intelli/transcribe/ws')) {
+      asrWss.handleUpgrade(req, socket, head, (ws) => asrWss.emit('connection', ws, req));
+      return;
+    }
+    if (String(req.url || '').startsWith('/api/abm/intelli/analyze/ws')) {
+      analysisWss.handleUpgrade(req, socket, head, (ws) => analysisWss.emit('connection', ws, req));
+      return;
+    }
+    socket.destroy();
+  });
+
+  return {
+    server,
+    calls,
+    close: () => {
+      asrWss.close();
+      analysisWss.close();
+      server.close();
+    },
+  };
 }
 
 test('Hosted runtime integration: reminders + live transcription + analysis + session flow', async () => {
-  const { server, calls } = createMockBackend();
+  const { server, calls, close } = createMockBackend();
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const port = server.address().port;
 
@@ -170,11 +241,15 @@ test('Hosted runtime integration: reminders + live transcription + analysis + se
     payload: analysis.parsed,
   });
   await client.sessionEnd({ sessionId: 'sess_test', metadata: { done: true } });
+  await client.closeAsrStream();
+  await client.closeAnalysisStream();
 
   assert.ok(calls.reminders >= 1);
-  assert.ok(calls.transcribe >= 1);
-  assert.ok(calls.analyze >= 1);
+  assert.ok(calls.transcribeWs >= 1);
+  assert.ok(calls.analyzeWs >= 1);
+  assert.equal(calls.transcribeHttp, 0);
+  assert.equal(calls.analyzeHttp, 0);
   assert.ok(calls.sessions >= 3);
 
-  server.close();
+  close();
 });

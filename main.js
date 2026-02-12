@@ -15,10 +15,17 @@ let isPinned = true;
 let panelCounter = 0;
 const panelWindows = new Map();
 const meetingAlertedIds = new Set();
+const captureProtectionMode = String(process.env.INTELLI_CAPTURE_PROTECTION || 'strict').trim().toLowerCase();
 
 function applyContentProtection(win, label = 'window') {
   try {
     if (!win || win.isDestroyed()) return;
+    if (captureProtectionMode === 'off') return;
+    // Compatibility mode for debugging specific desktop-share clients.
+    // Default remains strict non-capturable behavior.
+    if (process.platform === 'darwin' && captureProtectionMode === 'desktop-share-safe' && label === 'bar') {
+      return;
+    }
     win.setContentProtection(true);
   } catch (err) {
     console.warn(`Unable to enable content protection for ${label}:`, err);
@@ -48,10 +55,12 @@ function escapeHtml(input) {
 }
 
 function createHostedRuntime() {
+  console.log(`[intelli] capture_protection_mode=${captureProtectionMode}`);
   hostedConfigStore = new HostedConfigStore({ app });
   hostedClient = new HostedApiClient({
     getConfig: () => hostedConfigStore.get(),
     fetchImpl: fetch,
+    onStatus: (msg) => safeSend('llm-status', msg),
   });
   audioTranscriber = new HostedAudioTranscriber({
     transcribeFn: (wavBuffer) => hostedClient.transcribeWav(wavBuffer),
@@ -171,8 +180,8 @@ function normalizeBackendUrl(url) {
 function appendAuthCandidates(list, baseUrl) {
   const base = normalizeBackendUrl(baseUrl);
   if (!base) return;
-  list.push(`${base}/login`);
   list.push(`${base}/oauth-bridge`);
+  list.push(`${base}/login`);
   list.push(`${base}/register`);
   list.push(`${base}/`);
 }
@@ -388,7 +397,6 @@ async function openAuthWindow() {
     }
   };
 
-  let captureTimer = null;
   let candidateIndex = 0;
 
   const loadCandidateAt = async (index) => {
@@ -414,12 +422,36 @@ async function openAuthWindow() {
     await loadCandidateAt(candidateIndex);
   };
 
-  authWindow.webContents.setWindowOpenHandler(() => ({ action: 'allow' }));
+  authWindow.webContents.setWindowOpenHandler(() => ({
+    action: 'allow',
+    overrideBrowserWindowOptions: {
+      parent: authWindow,
+      modal: false,
+      show: true,
+      width: 520,
+      height: 720,
+      autoHideMenuBar: true,
+      webPreferences: {
+        contextIsolation: true,
+        sandbox: false,
+      },
+    },
+  }));
   authWindow.webContents.on('did-create-window', (childWindow) => {
     try {
       if (!childWindow || childWindow.isDestroyed()) return;
       applyContentProtection(childWindow, 'auth-child');
       authChildren.add(childWindow);
+      childWindow.once('ready-to-show', () => {
+        try {
+          if (!childWindow.isDestroyed()) {
+            childWindow.show();
+            childWindow.focus();
+          }
+        } catch (_) {
+          // no-op
+        }
+      });
       childWindow.webContents.on('did-finish-load', () => {
         tryCapture().catch(() => {});
       });
@@ -458,26 +490,16 @@ async function openAuthWindow() {
   });
 
   authWindow.on('closed', () => {
-    closeAuthWindows();
-    authWindow = null;
-    if (captureTimer) {
-      clearInterval(captureTimer);
-      captureTimer = null;
-    }
-  });
-
-  captureTimer = setInterval(async () => {
-    try {
-      const captured = await tryCapture();
-      if (captured) return;
-      const is405 = await looksLikeMethodNotAllowed();
-      if (is405) {
-        await tryNextCandidate();
+    for (const child of authChildren) {
+      try {
+        if (child && !child.isDestroyed()) child.close();
+      } catch (_) {
+        // no-op
       }
-    } catch (_) {
-      // no-op
     }
-  }, 1200);
+    authChildren.clear();
+    authWindow = null;
+  });
 
   const first = await loadCandidateAt(candidateIndex);
   if (!first.success) {
@@ -616,6 +638,12 @@ function cleanup() {
 
   try {
     if (audioTranscriber) audioTranscriber.stop();
+  } catch (_) {}
+  try {
+    if (hostedClient) hostedClient.closeAsrStream();
+  } catch (_) {}
+  try {
+    if (hostedClient) hostedClient.closeAnalysisStream();
   } catch (_) {}
 
   for (const [, win] of panelWindows) {
@@ -897,6 +925,7 @@ function registerIpc() {
   ipcMain.on('asr-stop', async () => {
     try {
       await audioTranscriber.stop();
+      await hostedClient.closeAsrStream();
       safeSend('asr-message', { op: 'status', message: 'Hosted ASR stopped' });
     } catch (err) {
       safeSend('asr-message', { op: 'error', message: String(err?.message || err) });
