@@ -64,3 +64,62 @@ test('HostedAudioTranscriber emits transcript and no ASR errors in happy path', 
   assert.equal(ops[0], 'transcript');
   assert.equal(transcripts[0], 'captured sentence');
 });
+
+test('HostedAudioTranscriber streaming mode pushes PCM chunks continuously', async () => {
+  const calls = { start: 0, chunk: 0, stop: 0, transcribeFallback: 0 };
+  const errors = [];
+
+  const transcriber = new HostedAudioTranscriber({
+    startStreamFn: async () => { calls.start += 1; return { success: true, streamId: 's1' }; },
+    sendPcmChunkFn: async (pcm) => { calls.chunk += 1; assert.ok(Buffer.isBuffer(pcm)); },
+    stopStreamFn: async () => { calls.stop += 1; return { success: true }; },
+    transcribeFn: async () => { calls.transcribeFallback += 1; return { transcript: 'fallback' }; },
+    onError: (msg) => errors.push(msg.message),
+    flushIntervalMs: 80,
+    minBytes: 1600,
+  });
+
+  transcriber.start({ sampleRate: 48000, flushIntervalMs: 80 });
+
+  for (let i = 0; i < 8; i += 1) {
+    const chunk = new Float32Array(2048);
+    for (let j = 0; j < chunk.length; j += 1) {
+      chunk[j] = Math.sin((i * chunk.length + j) / 25);
+    }
+    transcriber.addFloat32Chunk(chunk);
+  }
+
+  await new Promise((resolve) => setTimeout(resolve, 160));
+  await transcriber.stop();
+
+  assert.equal(errors.length, 0);
+  assert.equal(calls.start, 1);
+  assert.ok(calls.chunk >= 1);
+  assert.equal(calls.stop, 1);
+  assert.equal(calls.transcribeFallback, 0);
+});
+
+test('HostedAudioTranscriber waits for stream start before sending chunks', async () => {
+  const calls = { chunk: 0 };
+
+  const transcriber = new HostedAudioTranscriber({
+    startStreamFn: async () => {
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      return { success: true, streamId: 's1' };
+    },
+    sendPcmChunkFn: async () => { calls.chunk += 1; },
+    stopStreamFn: async () => ({ success: true }),
+    flushIntervalMs: 40,
+    minBytes: 1600,
+  });
+
+  transcriber.start({ sampleRate: 16000, flushIntervalMs: 40 });
+  transcriber.addFloat32Chunk(new Float32Array(2048).fill(0.2));
+
+  await new Promise((resolve) => setTimeout(resolve, 70));
+  assert.equal(calls.chunk, 0);
+
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  await transcriber.stop();
+  assert.ok(calls.chunk >= 1);
+});

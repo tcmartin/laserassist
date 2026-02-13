@@ -71,10 +71,11 @@ function delay(ms) {
 }
 
 class HostedApiClient {
-  constructor({ fetchImpl, getConfig, onStatus }) {
+  constructor({ fetchImpl, getConfig, onStatus, onAsrMessage }) {
     this.fetchImpl = fetchImpl || fetch;
     this.getConfig = getConfig;
     this.onStatus = typeof onStatus === 'function' ? onStatus : () => {};
+    this.onAsrMessage = typeof onAsrMessage === 'function' ? onAsrMessage : () => {};
 
     this._asrSocket = null;
     this._asrSocketReady = null;
@@ -186,6 +187,35 @@ class HostedApiClient {
         const parsed = parseSocketMessage(raw);
         if (!parsed) return;
         const reqId = String(parsed?.request_id || '').trim();
+
+        if (kind === 'asr') {
+          const op = String(parsed?.op || '').toLowerCase();
+          if (op === 'transcript_event') {
+            this.onAsrMessage({
+              op: 'transcript',
+              text: String(parsed?.text || '').trim(),
+              isFinal: Boolean(parsed?.is_final),
+              speechFinal: Boolean(parsed?.speech_final),
+              confidence: parsed?.confidence,
+              provider: String(parsed?.provider || 'deepgram'),
+            });
+            return;
+          }
+          if (op === 'asr_status') {
+            this.onAsrMessage({
+              op: 'status',
+              message: String(parsed?.message || ''),
+            });
+            return;
+          }
+          if (!reqId && (op === 'error' || parsed?.success === false)) {
+            this.onAsrMessage({
+              op: 'error',
+              message: String(parsed?.error || 'asr_ws_error'),
+            });
+            return;
+          }
+        }
 
         if (kind === 'analysis' && parsed?.op === 'analysis_status') {
           this.onStatus({
@@ -320,6 +350,19 @@ class HostedApiClient {
     return resultPromise;
   }
 
+  async _sendSocketMessage(kind, payload) {
+    const state = this._socketState(kind);
+    if (kind === 'analysis') {
+      await this.ensureAnalysisStream();
+    } else {
+      await this.ensureAsrStream();
+    }
+    if (!state.socket || state.socket.readyState !== WebSocket.OPEN) {
+      throw new Error(`${kind}_ws_not_open`);
+    }
+    state.socket.send(JSON.stringify(payload || {}));
+  }
+
   async _transcribeWavViaSocket(wavBuffer) {
     const out = await this._sendSocketRequest(
       'asr',
@@ -335,6 +378,63 @@ class HostedApiClient {
       transcript: String(out?.transcript || ''),
       confidence: out?.confidence,
       provider: String(out?.provider || 'deepgram'),
+    };
+  }
+
+  async startAsrStream({
+    model = 'nova-3',
+    language = 'multi',
+    encoding = 'linear16',
+    sampleRate = 16000,
+    channels = 1,
+    interimResults = true,
+    punctuate = true,
+    smartFormat = true,
+  } = {}) {
+    const out = await this._sendSocketRequest(
+      'asr',
+      {
+        op: 'stream_start',
+        model,
+        language,
+        encoding,
+        sample_rate: Number(sampleRate) || 16000,
+        channels: Number(channels) || 1,
+        interim_results: Boolean(interimResults),
+        punctuate: Boolean(punctuate),
+        smart_format: Boolean(smartFormat),
+      },
+      10000,
+    );
+    return {
+      success: Boolean(out?.success),
+      streamId: String(out?.stream_id || ''),
+    };
+  }
+
+  async sendAsrPcmChunk(pcmBuffer) {
+    const audio = Buffer.from(pcmBuffer || Buffer.alloc(0));
+    if (!audio.length) return { success: true };
+    await this._sendSocketMessage('asr', {
+      op: 'audio_chunk',
+      encoding: 'linear16',
+      sample_rate: 16000,
+      channels: 1,
+      audio_b64: audio.toString('base64'),
+    });
+    return { success: true, bytes: audio.length };
+  }
+
+  async endAsrStream() {
+    const out = await this._sendSocketRequest(
+      'asr',
+      {
+        op: 'stream_end',
+      },
+      10000,
+    );
+    return {
+      success: Boolean(out?.success),
     };
   }
 
@@ -445,34 +545,68 @@ class HostedApiClient {
   }
 
   async sessionStart({ sessionId, metadata }) {
-    return this._request('/api/abm/intelli/sessions/start', {
-      method: 'POST',
-      headers: this._headers({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ session_id: sessionId, metadata: metadata || {} }),
-    });
+    const out = await this._sendSocketRequest(
+      'analysis',
+      {
+        op: 'session_start',
+        session_id: sessionId,
+        metadata: metadata || {},
+      },
+      20000,
+    );
+    return {
+      success: Boolean(out?.success),
+      session: out?.session || null,
+    };
   }
 
   async sessionAppendEvent({ sessionId, type, payload, ts }) {
-    return this._request(`/api/abm/intelli/sessions/${encodeURIComponent(sessionId)}/events`, {
-      method: 'POST',
-      headers: this._headers({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ type, payload: payload || {}, ts: ts || undefined }),
-    });
+    const out = await this._sendSocketRequest(
+      'analysis',
+      {
+        op: 'session_append',
+        session_id: sessionId,
+        event_type: type,
+        payload: payload || {},
+        ts: ts || undefined,
+      },
+      20000,
+    );
+    return {
+      success: Boolean(out?.success),
+      event_count: Number(out?.event_count || 0),
+    };
   }
 
   async sessionEnd({ sessionId, metadata }) {
-    return this._request(`/api/abm/intelli/sessions/${encodeURIComponent(sessionId)}/end`, {
-      method: 'POST',
-      headers: this._headers({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ metadata: metadata || {} }),
-    });
+    const out = await this._sendSocketRequest(
+      'analysis',
+      {
+        op: 'session_end',
+        session_id: sessionId,
+        metadata: metadata || {},
+      },
+      20000,
+    );
+    return {
+      success: Boolean(out?.success),
+      session: out?.session || null,
+    };
   }
 
   async sessionGet(sessionId) {
-    return this._request(`/api/abm/intelli/sessions/${encodeURIComponent(sessionId)}`, {
-      method: 'GET',
-      headers: this._headers(),
-    });
+    const out = await this._sendSocketRequest(
+      'analysis',
+      {
+        op: 'session_get',
+        session_id: sessionId,
+      },
+      20000,
+    );
+    return {
+      success: Boolean(out?.success),
+      session: out?.session || null,
+    };
   }
 }
 

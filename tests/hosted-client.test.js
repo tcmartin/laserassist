@@ -71,6 +71,49 @@ function createServer() {
   asrWss.on('connection', (ws) => {
     ws.on('message', (raw) => {
       const msg = JSON.parse(String(raw || '{}'));
+      if (msg.op === 'stream_start') {
+        ws.send(JSON.stringify({
+          op: 'stream_started',
+          request_id: msg.request_id,
+          success: true,
+          stream_id: 'asr_stream_1',
+        }));
+        ws.send(JSON.stringify({
+          op: 'asr_status',
+          success: true,
+          stream_id: 'asr_stream_1',
+          message: 'stream_started',
+        }));
+        return;
+      }
+      if (msg.op === 'audio_chunk') {
+        ws.send(JSON.stringify({
+          op: 'transcript_event',
+          success: true,
+          stream_id: 'asr_stream_1',
+          text: 'live transcript chunk',
+          is_final: true,
+          speech_final: true,
+          confidence: 0.98,
+          provider: 'deepgram',
+        }));
+        return;
+      }
+      if (msg.op === 'stream_end') {
+        ws.send(JSON.stringify({
+          op: 'stream_ended',
+          request_id: msg.request_id,
+          success: true,
+          stream_id: 'asr_stream_1',
+        }));
+        ws.send(JSON.stringify({
+          op: 'asr_status',
+          success: true,
+          stream_id: 'asr_stream_1',
+          message: 'stream_ended',
+        }));
+        return;
+      }
       ws.send(JSON.stringify({
         op: 'transcript',
         request_id: msg.request_id,
@@ -86,6 +129,42 @@ function createServer() {
   analysisWss.on('connection', (ws) => {
     ws.on('message', (raw) => {
       const msg = JSON.parse(String(raw || '{}'));
+      if (msg.op === 'session_start') {
+        ws.send(JSON.stringify({
+          op: 'session_started',
+          request_id: msg.request_id,
+          success: true,
+          session: { session_id: msg.session_id, metadata: msg.metadata || {}, events: [] },
+        }));
+        return;
+      }
+      if (msg.op === 'session_append') {
+        ws.send(JSON.stringify({
+          op: 'session_appended',
+          request_id: msg.request_id,
+          success: true,
+          event_count: 1,
+        }));
+        return;
+      }
+      if (msg.op === 'session_end') {
+        ws.send(JSON.stringify({
+          op: 'session_ended',
+          request_id: msg.request_id,
+          success: true,
+          session: { session_id: msg.session_id, ended_at: new Date().toISOString() },
+        }));
+        return;
+      }
+      if (msg.op === 'session_get') {
+        ws.send(JSON.stringify({
+          op: 'session',
+          request_id: msg.request_id,
+          success: true,
+          session: { session_id: msg.session_id, events: [] },
+        }));
+        return;
+      }
       ws.send(JSON.stringify({
         op: 'analysis_status',
         request_id: msg.request_id,
@@ -176,12 +255,13 @@ test('HostedApiClient calls hosted endpoints with required headers', async () =>
     const session = await client.sessionGet('sess_1');
     assert.equal(session.success, true);
 
-    assert.ok(requests.length >= 6);
+    assert.ok(requests.length >= 3);
     const httpRequests = requests.filter((req) => !String(req.url || '').startsWith('/api/abm/intelli/transcribe/ws'));
     for (const req of httpRequests) {
       assert.equal(req.headers['x-org-id'], 'orgl');
       assert.equal(req.headers['authorization'], 'Bearer token123');
     }
+    assert.equal(requests.some((req) => String(req.url || '').includes('/api/abm/intelli/sessions/')), false);
     await client.closeAsrStream();
     await client.closeAnalysisStream();
   } finally {
@@ -415,6 +495,48 @@ test('HostedApiClient waits out websocket cooldown instead of hard-failing ASR',
     assert.equal(out.success, true);
     assert.equal(out.transcript, 'hello world');
     assert.ok(elapsed >= 50);
+
+    await client.closeAsrStream();
+    await client.closeAnalysisStream();
+  } finally {
+    close();
+  }
+});
+
+test('HostedApiClient supports continuous ASR stream events over websocket', async () => {
+  const { server, close } = createServer();
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const port = server.address().port;
+  const asrEvents = [];
+  const cfg = {
+    backendUrl: `http://127.0.0.1:${port}`,
+    tenantId: 'orgl',
+    jwtToken: 'token123',
+  };
+
+  try {
+    const client = new HostedApiClient({
+      getConfig: () => cfg,
+      fetchImpl: fetch,
+      onAsrMessage: (msg) => asrEvents.push(msg),
+    });
+
+    const started = await client.startAsrStream({
+      sampleRate: 16000,
+      channels: 1,
+      encoding: 'linear16',
+      language: 'multi',
+      model: 'nova-3',
+    });
+    assert.equal(started.success, true);
+    assert.equal(started.streamId, 'asr_stream_1');
+
+    await client.sendAsrPcmChunk(Buffer.from([1, 2, 3, 4, 5, 6]));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await client.endAsrStream();
+
+    assert.ok(asrEvents.some((e) => e.op === 'status' && String(e.message).includes('stream_started')));
+    assert.ok(asrEvents.some((e) => e.op === 'transcript' && String(e.text).includes('live transcript chunk')));
 
     await client.closeAsrStream();
     await client.closeAnalysisStream();

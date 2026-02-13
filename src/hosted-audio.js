@@ -72,44 +72,101 @@ function resampleTo16k(float32Array, srcRate, state = { phase: 0 }) {
 }
 
 class HostedAudioTranscriber {
-  constructor({ transcribeFn, onTranscript, onStatus, onError, flushIntervalMs = 3200, minBytes = 32000 } = {}) {
-    if (typeof transcribeFn !== 'function') {
-      throw new Error('HostedAudioTranscriber requires transcribeFn');
+  constructor({
+    transcribeFn,
+    startStreamFn,
+    sendPcmChunkFn,
+    stopStreamFn,
+    onTranscript,
+    onStatus,
+    onError,
+    flushIntervalMs = 1200,
+    minBytes = 8000,
+  } = {}) {
+    const hasStreaming = typeof startStreamFn === 'function' && typeof sendPcmChunkFn === 'function' && typeof stopStreamFn === 'function';
+    if (!hasStreaming && typeof transcribeFn !== 'function') {
+      throw new Error('HostedAudioTranscriber requires streaming callbacks or transcribeFn');
     }
     this.transcribeFn = transcribeFn;
+    this.startStreamFn = startStreamFn;
+    this.sendPcmChunkFn = sendPcmChunkFn;
+    this.stopStreamFn = stopStreamFn;
+    this.streaming = hasStreaming;
     this.onTranscript = onTranscript || (() => {});
     this.onStatus = onStatus || (() => {});
     this.onError = onError || (() => {});
-    this.flushIntervalMs = Math.max(1200, Number(flushIntervalMs) || 3200);
-    this.minBytes = Math.max(4000, Number(minBytes) || 32000);
+    this.flushIntervalMs = Math.max(300, Number(flushIntervalMs) || 1200);
+    this.minBytes = Math.max(1600, Number(minBytes) || 8000);
 
     this.active = false;
+    this.streamReady = false;
+    this.streamStartPromise = null;
     this.timer = null;
     this.sampleRate = 16000;
     this.phase = 0;
     this.chunks = [];
     this.bytes = 0;
     this.inFlight = false;
+    this.sendQueue = Promise.resolve();
   }
 
   start({ sampleRate = 16000, flushIntervalMs } = {}) {
     this.active = true;
+    this.streamReady = !this.streaming;
+    this.streamStartPromise = null;
     this.sampleRate = Math.max(8000, Math.min(192000, Number(sampleRate) || 16000));
     this.phase = 0;
     this.chunks = [];
     this.bytes = 0;
     if (flushIntervalMs) {
-      this.flushIntervalMs = Math.max(1200, Number(flushIntervalMs));
+      this.flushIntervalMs = Math.max(300, Number(flushIntervalMs));
     }
 
     this._startTimer();
+    if (this.streaming && this.startStreamFn) {
+      const opts = {
+        encoding: 'linear16',
+        sampleRate: 16000,
+        channels: 1,
+        model: 'nova-3',
+        language: 'en-US',
+        interimResults: true,
+        punctuate: true,
+        smartFormat: true,
+      };
+      this.streamStartPromise = Promise.resolve(this.startStreamFn(opts))
+        .then(() => {
+          this.streamReady = true;
+          // Push any buffered audio accumulated during stream startup.
+          return this.flush(false);
+        })
+        .catch((err) => {
+          this.streamReady = false;
+          this.onError({ op: 'error', message: `ASR stream start failure: ${String(err.message || err)}` });
+        });
+    }
     this.onStatus({ op: 'status', message: 'Hosted ASR started' });
   }
 
-  stop() {
+  async stop() {
     this.active = false;
     this._stopTimer();
-    return this.flush(true);
+    await this.flush(true);
+    try {
+      if (this.streamStartPromise) {
+        await this.streamStartPromise;
+      }
+      await this.sendQueue;
+    } catch (_) {
+      // no-op
+    }
+    if (this.streaming && this.stopStreamFn) {
+      try {
+        await this.stopStreamFn();
+      } catch (err) {
+        this.onError({ op: 'error', message: `ASR stream stop failure: ${String(err.message || err)}` });
+      }
+    }
   }
 
   addFloat32Chunk(float32Array) {
@@ -135,27 +192,32 @@ class HostedAudioTranscriber {
   }
 
   async flush(force = false) {
-    if (this.inFlight) return;
     if (!this.chunks.length) return;
+    if (this.streaming && !this.streamReady) return;
     if (!force && this.bytes < this.minBytes) return;
 
-    this.inFlight = true;
     const pcm = Buffer.concat(this.chunks);
     this.chunks = [];
     this.bytes = 0;
 
-    try {
-      const wav = buildWavBufferFromPcm16(pcm, 16000, 1, 16);
-      const out = await this.transcribeFn(wav);
-      const transcript = String(out?.transcript || '').trim();
-      if (transcript) {
-        this.onTranscript({ op: 'transcript', text: transcript });
+    const sendWork = async () => {
+      try {
+        if (this.streaming && this.sendPcmChunkFn) {
+          await this.sendPcmChunkFn(pcm);
+          return;
+        }
+        const wav = buildWavBufferFromPcm16(pcm, 16000, 1, 16);
+        const out = await this.transcribeFn(wav);
+        const transcript = String(out?.transcript || '').trim();
+        if (transcript) {
+          this.onTranscript({ op: 'transcript', text: transcript });
+        }
+      } catch (err) {
+        this.onError({ op: 'error', message: `ASR transcribe failure: ${String(err.message || err)}` });
       }
-    } catch (err) {
-      this.onError({ op: 'error', message: `ASR transcribe failure: ${String(err.message || err)}` });
-    } finally {
-      this.inFlight = false;
-    }
+    };
+    this.sendQueue = this.sendQueue.then(sendWork).catch(() => {});
+    await this.sendQueue;
   }
 
   _startTimer() {

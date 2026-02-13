@@ -14,6 +14,7 @@ function createMockBackend() {
     analyzeWs: 0,
     reminders: 0,
     sessions: 0,
+    sessionWs: 0,
   };
 
   const server = http.createServer((req, res) => {
@@ -104,6 +105,50 @@ function createMockBackend() {
   asrWss.on('connection', (ws) => {
     ws.on('message', (raw) => {
       const msg = JSON.parse(String(raw || '{}'));
+      if (msg.op === 'stream_start') {
+        ws.send(JSON.stringify({
+          op: 'stream_started',
+          request_id: msg.request_id,
+          success: true,
+          stream_id: 'asr_stream_runtime',
+        }));
+        ws.send(JSON.stringify({
+          op: 'asr_status',
+          success: true,
+          stream_id: 'asr_stream_runtime',
+          message: 'stream_started',
+        }));
+        return;
+      }
+      if (msg.op === 'audio_chunk') {
+        calls.transcribeWs += 1;
+        ws.send(JSON.stringify({
+          op: 'transcript_event',
+          success: true,
+          stream_id: 'asr_stream_runtime',
+          text: 'prospect asked about pricing and security',
+          is_final: true,
+          speech_final: true,
+          provider: 'deepgram',
+          confidence: 0.98,
+        }));
+        return;
+      }
+      if (msg.op === 'stream_end') {
+        ws.send(JSON.stringify({
+          op: 'stream_ended',
+          request_id: msg.request_id,
+          success: true,
+          stream_id: 'asr_stream_runtime',
+        }));
+        ws.send(JSON.stringify({
+          op: 'asr_status',
+          success: true,
+          stream_id: 'asr_stream_runtime',
+          message: 'stream_ended',
+        }));
+        return;
+      }
       calls.transcribeWs += 1;
       ws.send(JSON.stringify({
         op: 'transcript',
@@ -120,6 +165,53 @@ function createMockBackend() {
   analysisWss.on('connection', (ws) => {
     ws.on('message', (raw) => {
       const msg = JSON.parse(String(raw || '{}'));
+      if (msg.op === 'session_start') {
+        calls.sessionWs += 1;
+        ws.send(JSON.stringify({
+          op: 'session_started',
+          request_id: msg.request_id,
+          success: true,
+          session: {
+            session_id: msg.session_id,
+            metadata: msg.metadata || {},
+            events: [],
+          },
+        }));
+        return;
+      }
+      if (msg.op === 'session_append') {
+        calls.sessionWs += 1;
+        ws.send(JSON.stringify({
+          op: 'session_appended',
+          request_id: msg.request_id,
+          success: true,
+          event_count: 1,
+        }));
+        return;
+      }
+      if (msg.op === 'session_end') {
+        calls.sessionWs += 1;
+        ws.send(JSON.stringify({
+          op: 'session_ended',
+          request_id: msg.request_id,
+          success: true,
+          session: {
+            session_id: msg.session_id,
+            ended_at: new Date().toISOString(),
+          },
+        }));
+        return;
+      }
+      if (msg.op === 'session_get') {
+        calls.sessionWs += 1;
+        ws.send(JSON.stringify({
+          op: 'session',
+          request_id: msg.request_id,
+          success: true,
+          session: { session_id: msg.session_id, events: [] },
+        }));
+        return;
+      }
       calls.analyzeWs += 1;
       ws.send(JSON.stringify({
         op: 'analysis_status',
@@ -185,15 +277,29 @@ test('Hosted runtime integration: reminders + live transcription + analysis + se
     defaultPipelineId: 'pipe_live_1',
   };
 
-  const client = new HostedApiClient({ getConfig: () => cfg, fetchImpl: fetch });
+  const transcripts = [];
+  const asrErrors = [];
+  const client = new HostedApiClient({
+    getConfig: () => cfg,
+    fetchImpl: fetch,
+    onAsrMessage: (msg) => {
+      if (msg?.op === 'transcript' && msg.text) {
+        transcripts.push(msg.text);
+      }
+      if (msg?.op === 'error' && msg.message) {
+        asrErrors.push(msg.message);
+      }
+    },
+  });
 
   const reminders = await client.getReminders();
   assert.equal(reminders.success, true);
   assert.equal(reminders.count, 1);
 
-  const transcripts = [];
-  const asrErrors = [];
   const transcriber = new HostedAudioTranscriber({
+    startStreamFn: (opts) => client.startAsrStream(opts),
+    sendPcmChunkFn: (pcm) => client.sendAsrPcmChunk(pcm),
+    stopStreamFn: () => client.endAsrStream(),
     transcribeFn: (wav) => client.transcribeWav(wav),
     onTranscript: (msg) => transcripts.push(msg.text),
     onError: (msg) => asrErrors.push(msg.message),
@@ -249,7 +355,8 @@ test('Hosted runtime integration: reminders + live transcription + analysis + se
   assert.ok(calls.analyzeWs >= 1);
   assert.equal(calls.transcribeHttp, 0);
   assert.equal(calls.analyzeHttp, 0);
-  assert.ok(calls.sessions >= 3);
+  assert.equal(calls.sessions, 0);
+  assert.ok(calls.sessionWs >= 4);
 
   close();
 });

@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 const DEFAULT_HOSTED_CONFIG = Object.freeze({
-  backendUrl: 'http://localhost:8788',
+  backendUrl: 'http://127.0.0.1:8788',
   frontendUrl: '',
   tenantId: '',
   jwtToken: '',

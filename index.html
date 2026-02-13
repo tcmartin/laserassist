@@ -321,7 +321,7 @@
     <div class="settings-body">
       <div>
         <label class="label" for="backendInput">Backend URL</label>
-        <input id="backendInput" class="input" placeholder="http://localhost:8788" />
+        <input id="backendInput" class="input" placeholder="http://127.0.0.1:8788" />
       </div>
       <div>
         <label class="label" for="frontendInput">Frontend URL (optional)</label>
@@ -362,7 +362,7 @@
 
   <script>
     const API = window.electronAPI || {
-      getHostedConfig: async () => ({ success: true, config: { backendUrl: 'http://localhost:8788', frontendUrl: 'http://localhost:3100', tenantId: '', jwtToken: '', analysisModel: 'gpt-5-mini', lookaheadMinutes: 30 } }),
+      getHostedConfig: async () => ({ success: true, config: { backendUrl: 'http://127.0.0.1:8788', frontendUrl: 'http://localhost:3100', tenantId: '', jwtToken: '', analysisModel: 'gpt-5-mini', lookaheadMinutes: 30 } }),
       setHostedConfig: async (config) => ({ success: true, config }),
       getHostedReminders: async () => ({ success: true, reminders: [], count: 0 }),
       authOpenLogin: async () => ({ success: false, error: 'Electron API unavailable' }),
@@ -412,6 +412,7 @@
       activeReminder: null,
       reminderTimer: null,
       lastReminderAlertId: '',
+      lastTranscriptSegment: '',
       pinned: true,
       orgs: [],
     };
@@ -731,6 +732,7 @@
       state.audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
       state.sourceNode = state.audioCtx.createMediaStreamSource(stream);
       state.processor = state.audioCtx.createScriptProcessor(4096, 1, 1);
+      state.lastTranscriptSegment = '';
 
       state.processor.onaudioprocess = (event) => {
         if (!state.listening) return;
@@ -740,7 +742,7 @@
 
       state.sourceNode.connect(state.processor);
       state.processor.connect(state.audioCtx.destination);
-      API.asrStart({ sampleRate: state.audioCtx.sampleRate, updateMs: 2600 });
+      API.asrStart({ sampleRate: state.audioCtx.sampleRate, updateMs: 700 });
 
       const sid = `sess_${Date.now()}`;
       state.sessionId = sid;
@@ -790,7 +792,7 @@
       if (!cfgRes?.success) throw new Error(cfgRes?.error || 'config_read_failed');
       state.config = cfgRes.config || {};
 
-      els.backendInput.value = state.config.backendUrl || 'http://localhost:8788';
+      els.backendInput.value = state.config.backendUrl || 'http://127.0.0.1:8788';
       els.frontendInput.value = state.config.frontendUrl || '';
       els.tenantInput.value = state.config.tenantId || '';
       els.modelInput.value = state.config.analysisModel || 'gpt-5-mini';
@@ -956,6 +958,7 @@
         state.auth = { authenticated: false };
         state.transcript = '';
         state.transcriptSegments = [];
+        state.lastTranscriptSegment = '';
         await refreshConfigAndAuth();
         showToast('Signed out.');
       });
@@ -977,8 +980,12 @@
       API.onASRMessage((msg) => {
         if (!msg) return;
         if ((msg.op === 'transcript' || msg.op === 'final') && msg.text) {
+          const isFinal = msg.isFinal === undefined ? true : Boolean(msg.isFinal || msg.speechFinal);
+          if (!isFinal) return;
           const text = String(msg.text).trim();
           if (!text) return;
+          if (text === state.lastTranscriptSegment) return;
+          state.lastTranscriptSegment = text;
           state.transcriptSegments.push(text);
           state.transcript = `${state.transcript}\n${text}`.trim();
           if (state.sessionId) {

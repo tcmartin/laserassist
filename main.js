@@ -60,15 +60,23 @@ function createHostedRuntime() {
   hostedClient = new HostedApiClient({
     getConfig: () => hostedConfigStore.get(),
     fetchImpl: fetch,
-    onStatus: (msg) => safeSend('llm-status', msg),
+    onStatus: (msg) => {
+      if (msg && String(msg.type || '') === 'analysis-status') {
+        safeSend('llm-status', msg);
+      }
+    },
+    onAsrMessage: (msg) => safeSend('asr-message', msg),
   });
   audioTranscriber = new HostedAudioTranscriber({
+    startStreamFn: (opts) => hostedClient.startAsrStream(opts),
+    sendPcmChunkFn: (pcmBuffer) => hostedClient.sendAsrPcmChunk(pcmBuffer),
+    stopStreamFn: () => hostedClient.endAsrStream(),
     transcribeFn: (wavBuffer) => hostedClient.transcribeWav(wavBuffer),
     onTranscript: (msg) => safeSend('asr-message', msg),
     onStatus: (msg) => safeSend('asr-message', msg),
     onError: (msg) => safeSend('asr-message', msg),
-    flushIntervalMs: 2600,
-    minBytes: 28000,
+    flushIntervalMs: 700,
+    minBytes: 6400,
   });
 }
 
@@ -293,7 +301,7 @@ function isUsableAuthToken(token) {
 
 async function applyAuthToken({ token, backendUrl, tenantId, username }) {
   const current = hostedConfigStore.get();
-  const nextBackend = normalizeBackendUrl(backendUrl || current.backendUrl || 'http://localhost:8788');
+  const nextBackend = normalizeBackendUrl(backendUrl || current.backendUrl || 'http://127.0.0.1:8788');
   let nextTenant = String(tenantId || current.tenantId || '').trim();
   if (!nextTenant) {
     nextTenant = await inferTenantId(nextBackend, token, nextTenant);
@@ -323,7 +331,7 @@ async function openAuthWindow() {
 
   const cfg = hostedConfigStore.get();
   const candidates = loginUrlCandidates(cfg);
-  const startUrl = candidates[0] || 'http://localhost:8788';
+  const startUrl = candidates[0] || 'http://127.0.0.1:8788';
   const authChildren = new Set();
 
   authWindow = new BrowserWindow({
@@ -704,7 +712,7 @@ function registerIpc() {
   ipcMain.handle('auth-login-password', async (_e, payload) => {
     try {
       const cfg = hostedConfigStore.get();
-      const backendUrl = normalizeBackendUrl(payload?.backendUrl || cfg.backendUrl || 'http://localhost:8788');
+      const backendUrl = normalizeBackendUrl(payload?.backendUrl || cfg.backendUrl || 'http://127.0.0.1:8788');
       const username = String(payload?.username || '').trim();
       const password = String(payload?.password || '').trim();
       if (!username || !password) {
@@ -905,7 +913,7 @@ function registerIpc() {
       ensureHostedConfigured();
       audioTranscriber.start({
         sampleRate: Number(opts?.sampleRate || opts?.sample_rate || 16000),
-        flushIntervalMs: Number(opts?.updateMs || 2600),
+        flushIntervalMs: Number(opts?.updateMs || 700),
       });
     } catch (err) {
       safeSend('asr-message', { op: 'error', message: String(err?.message || err) });
