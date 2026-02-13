@@ -413,6 +413,14 @@
       reminderTimer: null,
       lastReminderAlertId: '',
       lastTranscriptSegment: '',
+      transcriptPanelLive: false,
+      transcriptPanelRefreshTimer: null,
+      autoInsightEnabled: true,
+      autoInsightTimer: null,
+      autoInsightInFlight: false,
+      autoInsightLastRunAt: 0,
+      autoInsightLastAnalyzedLen: 0,
+      autoInsightMinChars: 220,
       pinned: true,
       orgs: [],
     };
@@ -516,8 +524,12 @@
       }
       state.orgs = Array.isArray(out.orgs) ? out.orgs : [];
       renderOrgOptions();
-      if (!state.config?.tenantId && state.orgs.length === 1) {
-        els.tenantSelect.value = state.orgs[0].org_id;
+      const current = String(state.config?.tenantId || '').trim();
+      const hasCurrent = current && state.orgs.some((o) => String(o?.org_id || '') === current);
+      if (state.orgs.length && (!hasCurrent || !current)) {
+        const nextOrg = state.orgs[0]?.org_id || '';
+        els.tenantSelect.value = nextOrg;
+        els.tenantInput.value = nextOrg;
       }
     }
 
@@ -567,6 +579,26 @@
       if (subtitle) els.headlineSub.textContent = subtitle;
     }
 
+    function transcriptPanelPayload() {
+      return {
+        key: 'live_transcript',
+        title: 'Live transcript',
+        subtitle: 'Streaming notes for this call',
+        content: state.transcript || 'No transcript yet.',
+        width: 560,
+        height: 520,
+      };
+    }
+
+    function autoInsightPrompt() {
+      return [
+        'Produce actionable live call coaching from the transcript.',
+        'Output concise sections: summary, actionItems, questions, topics.',
+        'Separate pain points from objections and cite evidence from transcript wording.',
+        'Keep it practical for a sales rep on a live call. No filler.',
+      ].join(' ');
+    }
+
     async function openPanel(payload) {
       const res = await API.openOverlayPanel(payload || {});
       if (!res || !res.success) throw new Error(res?.error || 'panel_open_failed');
@@ -605,14 +637,8 @@
         showToast('No transcript yet. Start listening first.', 'error');
         return;
       }
-      await openPanel({
-        key: 'live_transcript',
-        title: 'Live transcript',
-        subtitle: 'Streaming notes for this call',
-        content: state.transcript,
-        width: 560,
-        height: 520,
-      });
+      state.transcriptPanelLive = true;
+      await openPanel(transcriptPanelPayload());
     }
 
     function compactText(v, n = 240) {
@@ -621,18 +647,21 @@
       return `${s.slice(0, n - 1)}…`;
     }
 
-    async function openAnalysisPanels(result) {
+    async function openAnalysisPanels(result, opts = {}) {
       const parsed = result?.results || {};
       const summary = compactText(parsed.summary || result?.raw?.text || 'No summary generated.', 900);
       const suggestions = parsed.suggestions || {};
       const actionItems = Array.isArray(suggestions.actionItems) ? suggestions.actionItems : [];
       const questions = Array.isArray(suggestions.questions) ? suggestions.questions : [];
       const topics = Array.isArray(suggestions.topics) ? suggestions.topics : [];
+      const liveMode = Boolean(opts.live);
+      const suffix = liveMode ? 'live' : String(Date.now());
+      const subtitle = state.activeReminder?.person_name || state.activeReminder?.person_email || 'Live call';
 
       await openPanel({
-        key: `analysis_${Date.now()}`,
-        title: 'Call insight',
-        subtitle: state.activeReminder?.person_name || state.activeReminder?.person_email || 'Live call',
+        key: `analysis_${suffix}`,
+        title: liveMode ? 'Live call insight' : 'Call insight',
+        subtitle,
         content: summary,
         chips: ['summary', `segments: ${state.transcriptSegments.length}`],
         width: 520,
@@ -641,7 +670,7 @@
 
       if (actionItems.length) {
         await openPanel({
-          key: `actions_${Date.now()}`,
+          key: `actions_${suffix}`,
           title: 'Next best actions',
           subtitle: 'Prioritized execution',
           content: actionItems.map((a, i) => `${i + 1}. ${a}`).join('\n'),
@@ -657,7 +686,7 @@
           topics.length ? `\nTopics to push:\n${topics.map((t, i) => `${i + 1}. ${t}`).join('\n')}` : '',
         ].join('\n').trim();
         await openPanel({
-          key: `questions_${Date.now()}`,
+          key: `questions_${suffix}`,
           title: 'Talk track support',
           subtitle: 'Discovery + objection handling',
           content: body,
@@ -733,6 +762,8 @@
       state.sourceNode = state.audioCtx.createMediaStreamSource(stream);
       state.processor = state.audioCtx.createScriptProcessor(4096, 1, 1);
       state.lastTranscriptSegment = '';
+      state.autoInsightLastAnalyzedLen = 0;
+      state.autoInsightLastRunAt = 0;
 
       state.processor.onaudioprocess = (event) => {
         if (!state.listening) return;
@@ -775,6 +806,14 @@
       state.sourceNode = null;
       state.audioCtx = null;
       state.mediaStream = null;
+      if (state.transcriptPanelRefreshTimer) {
+        window.clearTimeout(state.transcriptPanelRefreshTimer);
+        state.transcriptPanelRefreshTimer = null;
+      }
+      if (state.autoInsightTimer) {
+        window.clearTimeout(state.autoInsightTimer);
+        state.autoInsightTimer = null;
+      }
 
       if (state.sessionId) {
         API.sessionEnd(state.sessionId, {
@@ -803,6 +842,21 @@
       updateAuthSummary();
       updateButtons();
       await refreshOrgOptions();
+      if (state.auth?.authenticated && !state.config?.tenantId && els.tenantSelect.value) {
+        const autoTenant = String(els.tenantSelect.value || '').trim();
+        if (autoTenant) {
+          const autoCfg = await API.setHostedConfig({
+            ...state.config,
+            tenantId: autoTenant,
+          });
+          if (autoCfg?.success) {
+            state.config = autoCfg.config || state.config;
+            els.tenantInput.value = state.config.tenantId || '';
+            updateAuthSummary();
+            updateButtons();
+          }
+        }
+      }
 
       if (state.auth?.authenticated) {
         const user = state.auth.user || {};
@@ -814,8 +868,8 @@
 
     async function saveSettings() {
       const chosenTenant =
-        els.tenantInput.value.trim() ||
         els.tenantSelect.value.trim() ||
+        els.tenantInput.value.trim() ||
         (state.config?.tenantId || '').trim();
       const next = {
         backendUrl: els.backendInput.value.trim(),
@@ -857,6 +911,58 @@
         await openMeetingPanel();
         showToast(`Meeting reminder: ${r.person_name || r.person_email || 'contact'} ${formatRelativeMinutes(r.scheduled_at || '')}`);
       }
+    }
+
+    async function refreshTranscriptPanelIfOpen() {
+      if (!state.transcriptPanelLive) return;
+      const listed = await API.listOverlayPanels();
+      const keys = Array.isArray(listed?.keys) ? listed.keys : [];
+      if (!keys.includes('live_transcript')) {
+        state.transcriptPanelLive = false;
+        return;
+      }
+      await openPanel(transcriptPanelPayload());
+    }
+
+    function queueTranscriptPanelRefresh() {
+      if (!state.transcriptPanelLive) return;
+      if (state.transcriptPanelRefreshTimer) {
+        window.clearTimeout(state.transcriptPanelRefreshTimer);
+      }
+      state.transcriptPanelRefreshTimer = window.setTimeout(() => {
+        refreshTranscriptPanelIfOpen().catch(() => {});
+      }, 350);
+    }
+
+    async function runAutoInsightIfReady() {
+      if (!state.autoInsightEnabled || !state.listening) return;
+      if (state.autoInsightInFlight) return;
+      const transcriptLen = state.transcript.length;
+      if (transcriptLen < state.autoInsightMinChars) return;
+      if ((transcriptLen - state.autoInsightLastAnalyzedLen) < 120) return;
+      if ((Date.now() - state.autoInsightLastRunAt) < 20000) return;
+
+      state.autoInsightInFlight = true;
+      state.autoInsightLastRunAt = Date.now();
+      try {
+        const result = await runAnalysis(autoInsightPrompt(), 'full');
+        state.autoInsightLastAnalyzedLen = transcriptLen;
+        await openAnalysisPanels(result, { live: true });
+      } catch (_) {
+        // Keep silent during auto mode to avoid noisy toasts while call is active.
+      } finally {
+        state.autoInsightInFlight = false;
+      }
+    }
+
+    function queueAutoInsight() {
+      if (!state.autoInsightEnabled || !state.listening) return;
+      if (state.autoInsightTimer) {
+        window.clearTimeout(state.autoInsightTimer);
+      }
+      state.autoInsightTimer = window.setTimeout(() => {
+        runAutoInsightIfReady().catch(() => {});
+      }, 3200);
     }
 
     function bindEvents() {
@@ -928,9 +1034,8 @@
       });
 
       els.tenantSelect.addEventListener('change', () => {
-        if (!els.tenantInput.value.trim()) {
-          els.tenantInput.value = els.tenantSelect.value || '';
-        }
+        els.tenantInput.value = els.tenantSelect.value || '';
+        saveSettings().catch((err) => showToast(err.message || String(err), 'error'));
       });
 
       els.settingsBtn.addEventListener('click', () => {
@@ -959,6 +1064,7 @@
         state.transcript = '';
         state.transcriptSegments = [];
         state.lastTranscriptSegment = '';
+        state.transcriptPanelLive = false;
         await refreshConfigAndAuth();
         showToast('Signed out.');
       });
@@ -988,6 +1094,8 @@
           state.lastTranscriptSegment = text;
           state.transcriptSegments.push(text);
           state.transcript = `${state.transcript}\n${text}`.trim();
+          queueTranscriptPanelRefresh();
+          queueAutoInsight();
           if (state.sessionId) {
             API.sessionAppendTranscript(state.sessionId, { text, ts: nowIso() });
           }

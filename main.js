@@ -103,6 +103,11 @@ function createBarWindow() {
     },
   });
   applyContentProtection(barWindow, 'bar');
+  try {
+    barWindow.setAlwaysOnTop(isPinned, 'pop-up-menu');
+  } catch (_) {
+    barWindow.setAlwaysOnTop(isPinned);
+  }
 
   barWindow.loadFile('index.html');
   barWindow.once('ready-to-show', () => {
@@ -588,7 +593,8 @@ function nextPanelBounds(width, height) {
   const workArea = screen.getPrimaryDisplay().workArea;
   const offset = (panelCounter % 7) * 26;
   const x = Math.max(workArea.x + 24, workArea.x + workArea.width - width - 24 - offset);
-  const y = Math.max(workArea.y + 88, workArea.y + 88 + offset);
+  // Keep spawned panels below the compact top bar so drag area remains accessible.
+  const y = Math.max(workArea.y + 148, workArea.y + 148 + offset);
   panelCounter += 1;
   return { x, y, width, height };
 }
@@ -600,8 +606,9 @@ function openPanel(payload = {}) {
 
   const existing = panelWindows.get(key);
   if (existing && !existing.isDestroyed()) {
+    existing.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(panelHtml(payload))}`);
     existing.focus();
-    return { success: true, key, reused: true };
+    return { success: true, key, reused: true, updated: true };
   }
 
   const bounds = nextPanelBounds(width, height);
@@ -622,8 +629,18 @@ function openPanel(payload = {}) {
     },
   });
   applyContentProtection(panel, 'panel');
+  try {
+    panel.setAlwaysOnTop(true, 'floating');
+  } catch (_) {
+    panel.setAlwaysOnTop(true);
+  }
 
   panel.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(panelHtml(payload))}`);
+  try {
+    if (barWindow && !barWindow.isDestroyed()) barWindow.moveTop();
+  } catch (_) {
+    // no-op
+  }
   panel.on('closed', () => {
     panelWindows.delete(key);
   });
@@ -698,7 +715,18 @@ function registerIpc() {
   ipcMain.handle('window-toggle-pin', () => {
     isPinned = !isPinned;
     if (barWindow && !barWindow.isDestroyed()) {
-      barWindow.setAlwaysOnTop(isPinned);
+      try {
+        barWindow.setAlwaysOnTop(isPinned, 'pop-up-menu');
+      } catch (_) {
+        barWindow.setAlwaysOnTop(isPinned);
+      }
+      if (isPinned) {
+        try {
+          barWindow.moveTop();
+        } catch (_) {
+          // no-op
+        }
+      }
     }
     return { success: true, pinned: isPinned };
   });

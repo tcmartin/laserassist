@@ -17,6 +17,9 @@ test('Overlay renderer uses compact control bar + dynamic panels and no manual t
   assert.match(html, /id="refreshOrgsBtn"/);
   assert.match(html, /id="frontendInput"/);
   assert.match(html, /openOverlayPanel/);
+  assert.match(html, /queueTranscriptPanelRefresh/);
+  assert.match(html, /queueAutoInsight/);
+  assert.match(html, /const suffix = liveMode \? 'live'/);
   assert.match(html, /grid-template-columns:\s*minmax\(240px,\s*1fr\)\s*auto/);
   assert.match(html, /\.controls\s*\{[\s\S]*flex-wrap:\s*wrap/);
 
@@ -40,6 +43,9 @@ test('Main process contract is hosted-only with auth and panel IPC wiring', () =
   assert.match(mainJs, /minWidth:\s*720/);
   assert.match(mainJs, /maxHeight:\s*220/);
   assert.match(mainJs, /setContentProtection\(true\)/);
+  assert.match(mainJs, /existing\.loadURL\(/);
+  assert.match(mainJs, /workArea\.y \+ 148/);
+  assert.match(mainJs, /setAlwaysOnTop\(isPinned, 'pop-up-menu'\)/);
   assert.match(mainJs, /setWindowOpenHandler\(\(\) => \(\{/);
   assert.match(mainJs, /overrideBrowserWindowOptions/);
   assert.match(mainJs, /did-create-window/);
