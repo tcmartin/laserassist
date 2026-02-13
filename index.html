@@ -420,7 +420,7 @@
       autoInsightInFlight: false,
       autoInsightLastRunAt: 0,
       autoInsightLastAnalyzedLen: 0,
-      autoInsightMinChars: 220,
+      autoInsightMinChars: 80,
       pinned: true,
       orgs: [],
     };
@@ -647,54 +647,43 @@
       return `${s.slice(0, n - 1)}…`;
     }
 
+    function section(title, items) {
+      if (!Array.isArray(items) || !items.length) return '';
+      return `${title}:\n${items.map((v, i) => `${i + 1}. ${String(v || '').trim()}`).join('\n')}`;
+    }
+
     async function openAnalysisPanels(result, opts = {}) {
       const parsed = result?.results || {};
-      const summary = compactText(parsed.summary || result?.raw?.text || 'No summary generated.', 900);
+      const summary = compactText(parsed.summary || result?.raw?.text || 'No summary generated.', 1000);
       const suggestions = parsed.suggestions || {};
       const actionItems = Array.isArray(suggestions.actionItems) ? suggestions.actionItems : [];
       const questions = Array.isArray(suggestions.questions) ? suggestions.questions : [];
       const topics = Array.isArray(suggestions.topics) ? suggestions.topics : [];
+      const activities = Array.isArray(suggestions.activities) ? suggestions.activities : [];
+      const painPoints = Array.isArray(parsed.painPoints || parsed.pain_points) ? (parsed.painPoints || parsed.pain_points) : [];
+      const objections = Array.isArray(parsed.objections) ? parsed.objections : [];
       const liveMode = Boolean(opts.live);
-      const suffix = liveMode ? 'live' : String(Date.now());
+      const suffix = liveMode ? 'live' : 'manual';
       const subtitle = state.activeReminder?.person_name || state.activeReminder?.person_email || 'Live call';
+      const sections = [
+        `Summary:\n${summary}`,
+        section('Pain points', painPoints),
+        section('Objections', objections),
+        section('Next best actions', actionItems),
+        section('Suggested questions', questions),
+        section('Topics to emphasize', topics),
+        section('Suggested activities', activities),
+      ].filter(Boolean).join('\n\n');
 
       await openPanel({
-        key: `analysis_${suffix}`,
-        title: liveMode ? 'Live call insight' : 'Call insight',
+        key: `ai_coach_${suffix}`,
+        title: liveMode ? 'AI coach (live)' : 'AI coach',
         subtitle,
-        content: summary,
-        chips: ['summary', `segments: ${state.transcriptSegments.length}`],
+        content: sections,
+        chips: ['ai coach', `segments: ${state.transcriptSegments.length}`, liveMode ? 'auto' : 'manual'],
         width: 520,
-        height: 360,
+        height: 430,
       });
-
-      if (actionItems.length) {
-        await openPanel({
-          key: `actions_${suffix}`,
-          title: 'Next best actions',
-          subtitle: 'Prioritized execution',
-          content: actionItems.map((a, i) => `${i + 1}. ${a}`).join('\n'),
-          chips: ['action plan'],
-          width: 430,
-          height: 300,
-        });
-      }
-
-      if (questions.length || topics.length) {
-        const body = [
-          questions.length ? `Questions:\n${questions.map((q, i) => `${i + 1}. ${q}`).join('\n')}` : '',
-          topics.length ? `\nTopics to push:\n${topics.map((t, i) => `${i + 1}. ${t}`).join('\n')}` : '',
-        ].join('\n').trim();
-        await openPanel({
-          key: `questions_${suffix}`,
-          title: 'Talk track support',
-          subtitle: 'Discovery + objection handling',
-          content: body,
-          chips: ['conversation support'],
-          width: 430,
-          height: 320,
-        });
-      }
     }
 
     async function runAnalysis(prompt, analysisType = 'full') {
@@ -786,6 +775,15 @@
       state.listening = true;
       setHeadline('Listening live', state.activeReminder ? `${state.activeReminder.person_name || state.activeReminder.person_email || 'Contact'} • ${state.activeReminder.company_name || 'Account'}` : 'Capturing live call audio');
       updateButtons();
+      openPanel({
+        key: 'ai_coach_live',
+        title: 'AI coach (live)',
+        subtitle: state.activeReminder?.person_name || state.activeReminder?.person_email || 'Live call',
+        content: 'Listening now. Live suggestions will appear as transcript arrives.',
+        chips: ['ai coach', 'warming up'],
+        width: 520,
+        height: 430,
+      }).catch(() => {});
     }
 
     async function stopListening() {
@@ -939,7 +937,7 @@
       if (state.autoInsightInFlight) return;
       const transcriptLen = state.transcript.length;
       if (transcriptLen < state.autoInsightMinChars) return;
-      if ((transcriptLen - state.autoInsightLastAnalyzedLen) < 120) return;
+      if ((transcriptLen - state.autoInsightLastAnalyzedLen) < 40) return;
       if ((Date.now() - state.autoInsightLastRunAt) < 20000) return;
 
       state.autoInsightInFlight = true;

@@ -528,18 +528,7 @@ async function openAuthWindow() {
 }
 
 function panelHtml(payload) {
-  const title = escapeHtml(payload?.title || 'Insight');
-  const subtitle = escapeHtml(payload?.subtitle || '');
-  const content = escapeHtml(payload?.content || '').replace(/\n/g, '<br/>');
-  const chips = Array.isArray(payload?.chips)
-    ? payload.chips.map((c) => `<span class="chip">${escapeHtml(c)}</span>`).join('')
-    : '';
-  const links = Array.isArray(payload?.links)
-    ? payload.links
-        .filter((l) => l && l.href)
-        .map((l) => `<a class="link" href="${escapeHtml(l.href)}" target="_blank">${escapeHtml(l.label || l.href)}</a>`)
-        .join('')
-    : '';
+  const safePayload = JSON.stringify(payload || {}).replace(/</g, '\\u003c');
 
   return `<!doctype html>
 <html>
@@ -574,17 +563,53 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sa
   <div class="panel">
     <div class="header">
       <div>
-        <div class="title">${title}</div>
-        <div class="subtitle">${subtitle}</div>
+        <div id="panel-title" class="title">Insight</div>
+        <div id="panel-subtitle" class="subtitle"></div>
       </div>
       <button class="close" onclick="window.close()">×</button>
     </div>
     <div class="body">
-      <div class="chips">${chips}</div>
-      <div>${content}</div>
-      <div class="links">${links}</div>
+      <div id="panel-chips" class="chips"></div>
+      <div id="panel-content"></div>
+      <div id="panel-links" class="links"></div>
     </div>
   </div>
+  <script>
+    function esc(v) {
+      return String(v || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+    function nl2br(v) {
+      return esc(v).replace(/\\n/g, '<br/>');
+    }
+    window.__applyPanelPayload = function(payload) {
+      const data = payload || {};
+      const titleEl = document.getElementById('panel-title');
+      const subtitleEl = document.getElementById('panel-subtitle');
+      const contentEl = document.getElementById('panel-content');
+      const chipsEl = document.getElementById('panel-chips');
+      const linksEl = document.getElementById('panel-links');
+      if (titleEl) titleEl.textContent = String(data.title || 'Insight');
+      if (subtitleEl) subtitleEl.textContent = String(data.subtitle || '');
+      if (contentEl) contentEl.innerHTML = nl2br(String(data.content || ''));
+      if (chipsEl) {
+        const chips = Array.isArray(data.chips) ? data.chips : [];
+        chipsEl.innerHTML = chips.map((c) => '<span class="chip">' + esc(c) + '</span>').join('');
+      }
+      if (linksEl) {
+        const links = Array.isArray(data.links) ? data.links : [];
+        linksEl.innerHTML = links
+          .filter((l) => l && l.href)
+          .map((l) => '<a class="link" href="' + esc(l.href) + '" target="_blank">' + esc(l.label || l.href) + '</a>')
+          .join('');
+      }
+    };
+    window.__applyPanelPayload(${safePayload});
+  </script>
 </body>
 </html>`;
 }
@@ -606,7 +631,9 @@ function openPanel(payload = {}) {
 
   const existing = panelWindows.get(key);
   if (existing && !existing.isDestroyed()) {
-    existing.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(panelHtml(payload))}`);
+    const safePayload = JSON.stringify(payload || {}).replace(/</g, '\\u003c');
+    existing.webContents.executeJavaScript(`window.__applyPanelPayload && window.__applyPanelPayload(${safePayload}); true;`)
+      .catch(() => existing.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(panelHtml(payload))}`));
     existing.focus();
     return { success: true, key, reused: true, updated: true };
   }
