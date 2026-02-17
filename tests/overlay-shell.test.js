@@ -21,6 +21,17 @@ test('Overlay renderer uses compact control bar + dynamic panels and no manual t
   assert.match(html, /queueAutoInsight/);
   assert.match(html, /key: 'ai_coach_live'/);
   assert.match(html, /const suffix = liveMode \? 'live' : 'manual'/);
+  assert.match(html, /function toShortStrings/);
+  assert.match(html, /function toPainPoints/);
+  assert.match(html, /function normalizeDealSignal/);
+  assert.match(html, /function toClarificationPrompts/);
+  assert.match(html, /function askClarificationQuestion/);
+  assert.match(html, /key: 'qa_latest'/);
+  assert.match(html, /API\.onQuickAsk/);
+  assert.match(html, /quick-ask-btn/);
+  assert.match(html, /\.slice\(0,\s*maxItems\)/);
+  assert.match(html, /compactText\(parsed\.summary[\s\S]*420\)/);
+  assert.match(html, /coach:\s*\{/);
   assert.match(html, /grid-template-columns:\s*minmax\(240px,\s*1fr\)\s*auto/);
   assert.match(html, /\.controls\s*\{[\s\S]*flex-wrap:\s*wrap/);
 
@@ -45,6 +56,11 @@ test('Main process contract is hosted-only with auth and panel IPC wiring', () =
   assert.match(mainJs, /maxHeight:\s*220/);
   assert.match(mainJs, /setContentProtection\(true\)/);
   assert.match(mainJs, /__applyPanelPayload/);
+  assert.match(mainJs, /renderCoachPanel/);
+  assert.match(mainJs, /extractQuickAskFromUrl/);
+  assert.match(mainJs, /safeSend\('quick-ask'/);
+  assert.match(mainJs, /data\.coach/);
+  assert.match(mainJs, /coach-section/);
   assert.match(mainJs, /existing\.webContents\.executeJavaScript/);
   assert.match(mainJs, /workArea\.y \+ 148/);
   assert.match(mainJs, /setAlwaysOnTop\(isPinned, 'pop-up-menu'\)/);

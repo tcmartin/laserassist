@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   authListOrgs: () => ipcRenderer.invoke('auth-list-orgs'),
   authOpenExternal: (url) => ipcRenderer.invoke('auth-open-external', { url }),
   onAuthUpdated: (callback) => ipcRenderer.on('auth-updated', (_e, msg) => callback(msg)),
+  onQuickAsk: (callback) => ipcRenderer.on('quick-ask', (_e, msg) => callback(msg)),
 
   openOverlayPanel: (payload) => ipcRenderer.invoke('overlay-open-panel', payload || {}),
   closeOverlayPanel: (key) => ipcRenderer.invoke('overlay-close-panel', { key }),

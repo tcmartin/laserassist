@@ -557,6 +557,45 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sa
 .links { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
 .link { color: #9dc0ff; text-decoration: none; }
 .link:hover { text-decoration: underline; }
+.coach-grid { display: flex; flex-direction: column; gap: 8px; }
+.coach-section {
+  border: 1px solid rgba(128,152,214,0.35);
+  background: rgba(16,20,30,0.66);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+.coach-label { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: #a8bce5; margin-bottom: 4px; }
+.coach-summary { font-size: 12px; line-height: 1.45; color: #e9f1ff; }
+.coach-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.deal-signal {
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 10px;
+  border: 1px solid rgba(128,152,214,0.45);
+  text-transform: uppercase;
+}
+.deal-signal.hot { background: rgba(234,88,88,0.22); border-color: rgba(239,121,121,0.45); color: #ffc5c5; }
+.deal-signal.warm { background: rgba(245,158,11,0.22); border-color: rgba(245,188,90,0.45); color: #ffd79b; }
+.deal-signal.cool { background: rgba(96,165,250,0.22); border-color: rgba(123,182,255,0.45); color: #c5e0ff; }
+.coach-list { margin: 0; padding-left: 16px; display: flex; flex-direction: column; gap: 4px; }
+.coach-list li { font-size: 12px; color: #dce8ff; }
+.coach-subtext { font-size: 11px; color: #a8bce5; margin-top: 3px; }
+.coach-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+.coach-btn {
+  display: inline-block;
+  font-size: 11px;
+  line-height: 1.2;
+  color: #dce9ff;
+  border: 1px solid rgba(124,156,233,0.45);
+  background: rgba(72,107,186,0.26);
+  border-radius: 999px;
+  padding: 4px 9px;
+  text-decoration: none;
+}
+.coach-btn:hover {
+  border-color: rgba(161,192,255,0.74);
+  background: rgba(86,124,198,0.42);
+}
 </style>
 </head>
 <body>
@@ -586,6 +625,112 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sa
     function nl2br(v) {
       return esc(v).replace(/\\n/g, '<br/>');
     }
+    function compact(v, n) {
+      const max = Number(n || 260);
+      const s = String(v || '').trim();
+      if (s.length <= max) return s;
+      return s.slice(0, Math.max(0, max - 1)) + '...';
+    }
+    function asList(items, maxItems) {
+      if (!Array.isArray(items)) return [];
+      return items
+        .map((item) => {
+          if (typeof item === 'string') return String(item || '').trim();
+          if (!item || typeof item !== 'object') return '';
+          return String(item.text || item.question || item.action || item.topic || item.reason || '').trim();
+        })
+        .filter(Boolean)
+        .slice(0, Number(maxItems || 3));
+    }
+    function asPainPoints(items, maxItems) {
+      if (!Array.isArray(items)) return [];
+      return items
+        .map((item) => {
+          if (typeof item === 'string') {
+            return { pain: String(item || '').trim(), inference: '', evidence: '' };
+          }
+          if (!item || typeof item !== 'object') return null;
+          return {
+            pain: String(item.pain || item.title || item.name || '').trim(),
+            inference: String(item.inference || item.reasoning || item.reason || '').trim(),
+            evidence: String(item.evidence || item.quote || item.source || '').trim(),
+          };
+        })
+        .filter((item) => item && (item.pain || item.inference || item.evidence))
+        .slice(0, Number(maxItems || 3));
+    }
+    function parseDealSignal(input) {
+      if (!input) return { rating: '', reasoning: '' };
+      if (typeof input === 'string') {
+        const raw = String(input || '').trim();
+        let rating = '';
+        let reasoning = raw;
+        const split = raw.match(/^([A-Za-z ]+?)\\s*(?:→|->|:|-)\\s*(.+)$/);
+        if (split) {
+          rating = String(split[1] || '').trim().toLowerCase();
+          reasoning = String(split[2] || '').trim();
+        }
+        const reasoningSplit = reasoning.match(/(?:^|\\b)Reasoning:\\s*(.+)$/i);
+        if (reasoningSplit && reasoningSplit[1]) reasoning = String(reasoningSplit[1] || '').trim();
+        return { rating, reasoning };
+      }
+      if (typeof input !== 'object') return { rating: '', reasoning: '' };
+      return {
+        rating: String(input.rating || '').trim().toLowerCase(),
+        reasoning: String(input.reasoning || '').trim(),
+      };
+    }
+    function askHref(text) {
+      return 'intelli://ask?q=' + encodeURIComponent(String(text || ''));
+    }
+    function signalClass(rating) {
+      const r = String(rating || '').toLowerCase();
+      if (r === 'hot') return 'hot';
+      if (r === 'warm') return 'warm';
+      return 'cool';
+    }
+    function renderCoachPanel(coach) {
+      if (!coach || typeof coach !== 'object') return '';
+      const summary = compact(coach.summary || '', 420);
+      const dealSignal = parseDealSignal(coach.dealSignal || null);
+      const rating = String(dealSignal.rating || '').toLowerCase();
+      const reasoning = compact(dealSignal.reasoning || '', 280);
+      const painPoints = asPainPoints(coach.painPoints, 3);
+      const questions = asList(coach.clarificationPrompts || coach.questions, 5);
+      const actions = asList(coach.actionItems, 3);
+      const gaps = asList(coach.qualificationGaps, 3);
+      const sections = [];
+
+      if (summary) {
+        sections.push('<section class="coach-section"><div class="coach-label">Summary</div><div class="coach-summary">' + esc(summary) + '</div></section>');
+      }
+      if (rating || reasoning) {
+        const badge = rating ? '<span class="deal-signal ' + signalClass(rating) + '">' + esc('Deal signal: ' + rating) + '</span>' : '';
+        const why = reasoning ? '<div class="coach-subtext">' + esc(reasoning) + '</div>' : '';
+        sections.push('<section class="coach-section"><div class="coach-label">Why this signal</div><div class="coach-meta">' + badge + '</div>' + why + '</section>');
+      }
+      if (painPoints.length) {
+        const rows = painPoints.map((p) => {
+          const pain = p.pain ? '<div>' + esc(p.pain) + '</div>' : '';
+          const inf = p.inference ? '<div class="coach-subtext">' + esc(p.inference) + '</div>' : '';
+          const ev = p.evidence ? '<div class="coach-subtext">' + esc('Evidence: ' + p.evidence) + '</div>' : '';
+          return '<li>' + pain + inf + ev + '</li>';
+        }).join('');
+        sections.push('<section class="coach-section"><div class="coach-label">Pain points</div><ul class="coach-list">' + rows + '</ul></section>');
+      }
+      if (gaps.length) {
+        sections.push('<section class="coach-section"><div class="coach-label">Qualification gaps</div><ul class="coach-list">' + gaps.map((g) => '<li>' + esc(g) + '</li>').join('') + '</ul></section>');
+      }
+      if (questions.length) {
+        sections.push('<section class="coach-section"><div class="coach-label">Ask next</div><div class="coach-btns">' + questions.map((q) => '<a class="coach-btn" href="' + askHref(q) + '">' + esc(q) + '</a>').join('') + '</div></section>');
+      }
+      if (actions.length) {
+        sections.push('<section class="coach-section"><div class="coach-label">Recommended actions</div><ol class="coach-list">' + actions.map((a) => '<li>' + esc(a) + '</li>').join('') + '</ol></section>');
+      }
+
+      if (!sections.length) return '';
+      return '<div class="coach-grid">' + sections.join('') + '</div>';
+    }
     window.__applyPanelPayload = function(payload) {
       const data = payload || {};
       const titleEl = document.getElementById('panel-title');
@@ -595,7 +740,10 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sa
       const linksEl = document.getElementById('panel-links');
       if (titleEl) titleEl.textContent = String(data.title || 'Insight');
       if (subtitleEl) subtitleEl.textContent = String(data.subtitle || '');
-      if (contentEl) contentEl.innerHTML = nl2br(String(data.content || ''));
+      if (contentEl) {
+        const coachHtml = renderCoachPanel(data.coach || null);
+        contentEl.innerHTML = coachHtml || nl2br(String(data.content || ''));
+      }
       if (chipsEl) {
         const chips = Array.isArray(data.chips) ? data.chips : [];
         chipsEl.innerHTML = chips.map((c) => '<span class="chip">' + esc(c) + '</span>').join('');
@@ -622,6 +770,35 @@ function nextPanelBounds(width, height) {
   const y = Math.max(workArea.y + 148, workArea.y + 148 + offset);
   panelCounter += 1;
   return { x, y, width, height };
+}
+
+function extractQuickAskFromUrl(rawUrl) {
+  try {
+    const parsed = new URL(String(rawUrl || ''));
+    if (parsed.protocol !== 'intelli:') return '';
+    const host = String(parsed.hostname || '').toLowerCase();
+    const path = String(parsed.pathname || '').toLowerCase();
+    if (host !== 'ask' && path !== '/ask') return '';
+    const question = parsed.searchParams.get('q') || parsed.searchParams.get('question') || '';
+    return String(question || '').trim();
+  } catch (_) {
+    return '';
+  }
+}
+
+function handlePanelNavigation(event, url) {
+  const question = extractQuickAskFromUrl(url);
+  if (question) {
+    try { if (event && typeof event.preventDefault === 'function') event.preventDefault(); } catch (_) {}
+    safeSend('quick-ask', { question, source: 'panel' });
+    return true;
+  }
+  if (/^https?:\/\//i.test(String(url || ''))) {
+    try { if (event && typeof event.preventDefault === 'function') event.preventDefault(); } catch (_) {}
+    shell.openExternal(String(url || '')).catch(() => {});
+    return true;
+  }
+  return false;
 }
 
 function openPanel(payload = {}) {
@@ -661,6 +838,13 @@ function openPanel(payload = {}) {
   } catch (_) {
     panel.setAlwaysOnTop(true);
   }
+  panel.webContents.on('will-navigate', (event, url) => {
+    handlePanelNavigation(event, url);
+  });
+  panel.webContents.setWindowOpenHandler(({ url }) => {
+    handlePanelNavigation(null, url);
+    return { action: 'deny' };
+  });
 
   panel.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(panelHtml(payload))}`);
   try {

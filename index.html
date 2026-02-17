@@ -141,7 +141,36 @@
       gap: 8px;
     }
 
-    .dock.visible { display: flex; align-items: center; }
+    .dock.visible { display: flex; align-items: center; flex-wrap: wrap; }
+
+    .quick-asks {
+      width: 100%;
+      display: none;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .quick-asks.show { display: flex; }
+
+    .quick-ask-btn {
+      border: 1px solid rgba(124, 163, 255, 0.52);
+      background: rgba(52, 74, 122, 0.58);
+      color: var(--text);
+      border-radius: 999px;
+      height: 28px;
+      padding: 0 10px;
+      font-size: 11px;
+      cursor: pointer;
+      white-space: nowrap;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .quick-ask-btn:hover {
+      border-color: rgba(160, 191, 255, 0.75);
+      background: rgba(70, 99, 160, 0.66);
+    }
 
     .input {
       flex: 1;
@@ -310,6 +339,7 @@
     <div id="promptDock" class="dock">
       <input id="promptInput" class="input" placeholder="Ask for call coaching, objection handling, or next-best action..." />
       <button id="sendPromptBtn" class="btn primary">Analyze</button>
+      <div id="clarifyButtons" class="quick-asks"></div>
     </div>
   </div>
 
@@ -372,6 +402,7 @@
       authListOrgs: async () => ({ success: true, orgs: [] }),
       authOpenExternal: async () => ({ success: true }),
       onAuthUpdated: () => {},
+      onQuickAsk: () => {},
       openOverlayPanel: async () => ({ success: true }),
       closeOverlayPanel: async () => ({ success: true }),
       listOverlayPanels: async () => ({ success: true, keys: [] }),
@@ -421,6 +452,7 @@
       autoInsightLastRunAt: 0,
       autoInsightLastAnalyzedLen: 0,
       autoInsightMinChars: 80,
+      clarificationPrompts: [],
       pinned: true,
       orgs: [],
     };
@@ -442,6 +474,7 @@
       promptDock: document.getElementById('promptDock'),
       promptInput: document.getElementById('promptInput'),
       sendPromptBtn: document.getElementById('sendPromptBtn'),
+      clarifyButtons: document.getElementById('clarifyButtons'),
       settingsPanel: document.getElementById('settingsPanel'),
       settingsCloseBtn: document.getElementById('settingsCloseBtn'),
       backendInput: document.getElementById('backendInput'),
@@ -652,23 +685,170 @@
       return `${title}:\n${items.map((v, i) => `${i + 1}. ${String(v || '').trim()}`).join('\n')}`;
     }
 
+    function toShortStrings(items, maxItems = 3) {
+      if (!Array.isArray(items)) return [];
+      return items
+        .map((item) => {
+          if (typeof item === 'string') return String(item || '').trim();
+          if (!item || typeof item !== 'object') return '';
+          return String(item.text || item.question || item.action || item.topic || item.reason || '').trim();
+        })
+        .filter(Boolean)
+        .slice(0, maxItems);
+    }
+
+    function uniqueStrings(items, maxItems = 4) {
+      const seen = new Set();
+      const out = [];
+      for (const raw of Array.isArray(items) ? items : []) {
+        const item = String(raw || '').trim();
+        if (!item) continue;
+        const key = item.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(item);
+        if (out.length >= maxItems) break;
+      }
+      return out;
+    }
+
+    function toPainPoints(items, maxItems = 3) {
+      if (!Array.isArray(items)) return [];
+      return items
+        .map((item) => {
+          if (typeof item === 'string') {
+            return { pain: String(item || '').trim(), inference: '', evidence: '' };
+          }
+          if (!item || typeof item !== 'object') return null;
+          return {
+            pain: String(item.pain || item.title || item.name || '').trim(),
+            inference: String(item.inference || item.reasoning || item.reason || '').trim(),
+            evidence: String(item.evidence || item.quote || item.source || '').trim(),
+          };
+        })
+        .filter((item) => item && (item.pain || item.inference || item.evidence))
+        .slice(0, maxItems);
+    }
+
+    function normalizeDealSignal(input) {
+      if (!input) return { rating: '', reasoning: '' };
+      if (typeof input === 'string') {
+        const raw = String(input).trim();
+        let rating = '';
+        let reasoning = raw;
+        const split = raw.match(/^([A-Za-z ]+?)\s*(?:→|->|:|-)\s*(.+)$/);
+        if (split) {
+          rating = String(split[1] || '').trim().toLowerCase();
+          reasoning = String(split[2] || '').trim();
+        }
+        const reasoningSplit = reasoning.match(/(?:^|\b)Reasoning:\s*(.+)$/i);
+        if (reasoningSplit && reasoningSplit[1]) {
+          reasoning = String(reasoningSplit[1] || '').trim();
+        }
+        return { rating, reasoning };
+      }
+      if (typeof input !== 'object') return { rating: '', reasoning: '' };
+      return {
+        rating: String(input.rating || '').trim().toLowerCase(),
+        reasoning: String(input.reasoning || '').trim(),
+      };
+    }
+
+    function toClarificationPrompts({ questions, activities, painPoints, objections }) {
+      const q = toShortStrings(questions || [], 4);
+      const a = toShortStrings(activities || [], 3).map((item) => (
+        /\?$/.test(item)
+          ? item
+          : `How should I execute this now: ${item}?`
+      ));
+      const p = (Array.isArray(painPoints) ? painPoints : [])
+        .map((pp) => String(pp?.pain || '').trim())
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((pain) => `What should I ask to validate "${pain}" without sounding pushy?`);
+      const o = toShortStrings(objections || [], 2).map((obj) => `How should I respond to this objection: ${obj}?`);
+      return uniqueStrings([...q, ...a, ...p, ...o], 5);
+    }
+
+    function renderClarifyButtons() {
+      const wrap = els.clarifyButtons;
+      if (!wrap) return;
+      const prompts = Array.isArray(state.clarificationPrompts) ? state.clarificationPrompts : [];
+      if (!prompts.length) {
+        wrap.innerHTML = '';
+        wrap.classList.remove('show');
+        return;
+      }
+      wrap.classList.add('show');
+      wrap.innerHTML = prompts
+        .map((prompt, idx) => `<button class="quick-ask-btn" data-qidx="${idx}" title="${String(prompt || '').replace(/"/g, '&quot;')}">${String(prompt || '')}</button>`)
+        .join('');
+      Array.from(wrap.querySelectorAll('.quick-ask-btn')).forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const idx = Number(btn.getAttribute('data-qidx') || -1);
+          const q = prompts[idx];
+          if (!q) return;
+          await askClarificationQuestion(q, { source: 'suggested' });
+        });
+      });
+    }
+
+    function extractAnswerText(result) {
+      const parsed = result?.results || {};
+      const direct = parsed.answer || parsed.summary || result?.raw?.text || '';
+      const text = String(direct || '').trim();
+      return text || 'No answer returned.';
+    }
+
+    async function openQuestionAnswerPanel(question, result, opts = {}) {
+      const answer = compactText(extractAnswerText(result), 1200);
+      const sourceChip = opts.source ? String(opts.source) : 'manual';
+      await openPanel({
+        key: 'qa_latest',
+        title: 'Clarification answer',
+        subtitle: compactText(String(question || ''), 120),
+        content: `Question:\n${question}\n\nAnswer:\n${answer}`,
+        chips: ['qa', sourceChip, `segments: ${state.transcriptSegments.length}`],
+        width: 520,
+        height: 320,
+      });
+    }
+
+    async function askClarificationQuestion(question, opts = {}) {
+      const q = String(question || '').trim();
+      if (!q) return;
+      try {
+        const result = await runAnalysis(q, 'full');
+        if (!result) return;
+        await openQuestionAnswerPanel(q, result, opts);
+      } catch (err) {
+        showToast(err.message || String(err), 'error', 4200);
+      }
+    }
+
     async function openAnalysisPanels(result, opts = {}) {
       const parsed = result?.results || {};
-      const summary = compactText(parsed.summary || result?.raw?.text || 'No summary generated.', 1000);
+      const summary = compactText(parsed.summary || result?.raw?.text || 'No summary generated.', 420);
       const suggestions = parsed.suggestions || {};
-      const actionItems = Array.isArray(suggestions.actionItems) ? suggestions.actionItems : [];
-      const questions = Array.isArray(suggestions.questions) ? suggestions.questions : [];
-      const topics = Array.isArray(suggestions.topics) ? suggestions.topics : [];
-      const activities = Array.isArray(suggestions.activities) ? suggestions.activities : [];
-      const painPoints = Array.isArray(parsed.painPoints || parsed.pain_points) ? (parsed.painPoints || parsed.pain_points) : [];
-      const objections = Array.isArray(parsed.objections) ? parsed.objections : [];
+      const actionItems = toShortStrings(suggestions.actionItems || parsed.next_actions || parsed.nextActions || []);
+      const questions = toShortStrings(suggestions.questions || parsed.recommended_questions || parsed.recommendedQuestions || []);
+      const topics = toShortStrings(suggestions.topics || []);
+      const activities = toShortStrings(suggestions.activities || []);
+      const painPoints = toPainPoints(parsed.painPoints || parsed.pain_points || []);
+      const objections = toShortStrings(parsed.objections || []);
+      const qualificationGaps = toShortStrings(parsed.qualification_gaps || parsed.qualificationGaps || []);
+      const dealSignal = normalizeDealSignal(parsed.deal_signal || parsed.dealSignal || {});
+      const clarificationPrompts = toClarificationPrompts({ questions, activities, painPoints, objections });
+      state.clarificationPrompts = clarificationPrompts;
+      renderClarifyButtons();
       const liveMode = Boolean(opts.live);
       const suffix = liveMode ? 'live' : 'manual';
       const subtitle = state.activeReminder?.person_name || state.activeReminder?.person_email || 'Live call';
       const sections = [
         `Summary:\n${summary}`,
-        section('Pain points', painPoints),
+        section('Pain points', painPoints.map((p) => [p.pain, p.inference, p.evidence ? `Evidence: ${p.evidence}` : ''].filter(Boolean).join(' — '))),
         section('Objections', objections),
+        section('Qualification gaps', qualificationGaps),
         section('Next best actions', actionItems),
         section('Suggested questions', questions),
         section('Topics to emphasize', topics),
@@ -680,6 +860,18 @@
         title: liveMode ? 'AI coach (live)' : 'AI coach',
         subtitle,
         content: sections,
+        coach: {
+          summary,
+          dealSignal,
+          painPoints,
+          objections,
+          qualificationGaps,
+          actionItems,
+          questions,
+          topics,
+          activities,
+          clarificationPrompts,
+        },
         chips: ['ai coach', `segments: ${state.transcriptSegments.length}`, liveMode ? 'auto' : 'manual'],
         width: 520,
         height: 430,
@@ -1018,12 +1210,7 @@
         const prompt = els.promptInput.value.trim();
         if (!prompt) return;
         els.promptInput.value = '';
-        try {
-          const result = await runAnalysis(prompt, 'full');
-          await openAnalysisPanels(result);
-        } catch (err) {
-          showToast(err.message || String(err), 'error', 4200);
-        }
+        await askClarificationQuestion(prompt, { source: 'manual' });
       };
 
       els.sendPromptBtn.addEventListener('click', runPrompt);
@@ -1061,6 +1248,8 @@
         state.auth = { authenticated: false };
         state.transcript = '';
         state.transcriptSegments = [];
+        state.clarificationPrompts = [];
+        renderClarifyButtons();
         state.lastTranscriptSegment = '';
         state.transcriptPanelLive = false;
         await refreshConfigAndAuth();
@@ -1079,6 +1268,11 @@
 
       API.onAuthUpdated(() => {
         refreshConfigAndAuth().catch(() => {});
+      });
+      API.onQuickAsk((payload) => {
+        const q = String(payload?.question || '').trim();
+        if (!q) return;
+        askClarificationQuestion(q, { source: 'panel' }).catch(() => {});
       });
 
       API.onASRMessage((msg) => {
