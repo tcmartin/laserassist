@@ -366,6 +366,31 @@ test('standalone Start/Stop mixes injected microphone and display audio into ASR
       };
     })()`, true);
 
+    // Use the real startup deadline while native display permission never answers.
+    await renderer.evaluate(`(() => {
+      const m = window.__standaloneAudioE2E;
+      m.workingMic = navigator.mediaDevices.getUserMedia;
+      m.workingDisplay = navigator.mediaDevices.getDisplayMedia;
+      m.stalledMic = m.micStream.clone();
+      m.lateDisplay = m.displayStream.clone();
+      navigator.mediaDevices.getUserMedia = async () => m.stalledMic;
+      navigator.mediaDevices.getDisplayMedia = () => new Promise(resolve => { m.resolveLateDisplay = resolve; });
+      document.getElementById('listenBtn').click();
+    })()`);
+    assert.equal(await renderer.evaluate("document.getElementById('listenBtn').textContent === 'Starting…' && document.getElementById('listenBtn').disabled"), true);
+    await waitUntil(() => renderer.evaluate("document.getElementById('listenBtn').textContent === 'Start' && !document.getElementById('listenBtn').disabled"), Boolean, 35000, 'stalled permission deadline restores Start');
+    assert.equal(await renderer.evaluate("document.body.innerText.includes('Audio capture timed out.')"), true);
+    assert.equal(fixture.metrics.asrStarts, 0, 'stalled capture never starts ASR');
+    assert.equal(fixture.metrics.sessions.starts, 0, 'stalled capture never starts a session');
+    assert.equal(await renderer.evaluate("window.__standaloneAudioE2E.stalledMic.getTracks().every(t => t.readyState === 'ended')"), true);
+    await renderer.evaluate(`(() => {
+      const m = window.__standaloneAudioE2E;
+      m.resolveLateDisplay(m.lateDisplay);
+      navigator.mediaDevices.getUserMedia = m.workingMic;
+      navigator.mediaDevices.getDisplayMedia = m.workingDisplay;
+    })()`);
+    await waitUntil(() => renderer.evaluate("window.__standaloneAudioE2E.lateDisplay.getTracks().every(t => t.readyState === 'ended')"), Boolean, 5000, 'late native stream cleanup');
+
     await renderer.evaluate("document.getElementById('listenBtn').click()");
     await waitUntil(() => renderer.evaluate('window.__standaloneAudioE2E.getUserMedia'), (value) => value >= 1, 15000, 'microphone capture injection');
     await waitUntil(() => renderer.evaluate('window.__standaloneAudioE2E.getDisplayMedia'), (value) => value >= 1, 15000, 'display capture injection');

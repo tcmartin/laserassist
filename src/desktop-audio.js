@@ -13,6 +13,7 @@
       this.output = null;
       this.closed = false;
       this.started = false;
+      this.cancelStart = null;
     }
 
     start(mode = 'microphone_system') {
@@ -39,7 +40,14 @@
         void this.close();
         return Promise.reject(error);
       }
-      return Promise.all(requests).then(async (streams) => {
+      let timer;
+      const interrupted = new Promise((_, reject) => {
+        this.cancelStart = () => reject(new Error('Audio capture stopped.'));
+        timer = setTimeout(() => reject(new Error(
+          'Audio capture timed out. Unlock and wake your device, check audio permissions, then try again.'
+        )), 30000);
+      });
+      const acquired = Promise.all(requests).then(async (streams) => {
         if (this.closed) throw new Error('Audio capture stopped.');
         this.context = new this.AudioContext({ sampleRate: 48000 });
         this.output = this.context.createMediaStreamDestination();
@@ -54,9 +62,13 @@
         await this.context.resume();
         if (this.closed) throw new Error('Audio capture stopped.');
         return this.output.stream;
-      }).catch(async (error) => {
+      });
+      return Promise.race([acquired, interrupted]).catch(async (error) => {
         await this.close();
         throw error;
+      }).finally(() => {
+        clearTimeout(timer);
+        this.cancelStart = null;
       });
     }
 
@@ -84,6 +96,7 @@
     async close() {
       if (this.closed) return;
       this.closed = true;
+      if (this.cancelStart) this.cancelStart();
       for (const node of this.nodes) { try { node.disconnect(); } catch (_) {} }
       this.nodes = [];
       for (const stream of this.streams) stream.getTracks().forEach((track) => track.stop());

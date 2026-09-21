@@ -159,3 +159,42 @@ test('display capture never retries a consumed callback after a delivery error',
   }), /Frame destroyed/);
   assert.equal(calls, 1);
 });
+
+test('stalled native permissions time out and stop streams that resolve later', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const f = fixture(); let resolveDisplay;
+  f.mediaDevices.getDisplayMedia = () => new Promise(resolve => { resolveDisplay = resolve; });
+  const capture = new DesktopAudioCapture(f);
+  const pending = capture.start();
+  const rejected = assert.rejects(pending, /Audio capture timed out/);
+  await Promise.resolve();
+  t.mock.timers.tick(30000);
+  await rejected;
+  assert.equal(f.microphone.getTracks()[0].readyState, 'ended');
+  resolveDisplay(f.display);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(f.display.getTracks()[0].readyState, 'ended');
+  assert.equal(f.contexts.length, 0);
+});
+
+test('close settles start even when the operating system never answers', async () => {
+  const f = fixture();
+  f.mediaDevices.getDisplayMedia = () => new Promise(() => {});
+  const capture = new DesktopAudioCapture(f);
+  const rejected = assert.rejects(capture.start(), /Audio capture stopped/);
+  await capture.close();
+  await rejected;
+  assert.equal(f.microphone.getTracks()[0].readyState, 'ended');
+  assert.equal(f.contexts.length, 0);
+});
+
+test('successful capture clears its startup deadline', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const f = fixture(); const capture = new DesktopAudioCapture(f);
+  await capture.start();
+  t.mock.timers.tick(30000);
+  await Promise.resolve();
+  assert.equal(capture.closed, false);
+  assert.equal(f.microphone.getTracks()[0].readyState, 'live');
+  await capture.close();
+});
