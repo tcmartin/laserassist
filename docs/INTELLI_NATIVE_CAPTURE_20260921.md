@@ -35,3 +35,7 @@ Evidence: root workspace `output/calling-validation-20260920/standalone/native-c
 Native system-audio capture remains unverified and currently fails on this host. Investigate native macOS picker/capture behavior next, preserving explicit permission and trusted-origin checks. Developer ID signing/notarization and live telephony configuration remain separate outstanding gates. Do not present this unsigned build as a shipped release.
 
 The existing Intelli worktree is retained by task01a0c0ac-2d06-71a0-b71c-7e24530d4878 for native capture investigation and signing. Review date2026-09-22. No new worktree or dependency installation was created for this correction.
+
+## Source synchronization evidence
+
+Verified source commit `8eaa31ebd759deef06333914fb77369c56830788`, tree `ccfc5261fa58e5d293ebf9b1b292b17374015d97`, was pushed normally to `origin/codex/intelli-calling-20260920` and `origin/master`. A fresh fetch returned that exact remote default and `git merge-base --is-ancestor HEAD origin/master` exited0. GitHub Actions query for the full commit SHA returned `total_count:0`; remote CI is unverified. Packaged generated-voice check passed1/1 in5.41s. Native packaged denial has no callback exceptions, but still returns AbortError because screen sources are empty.
