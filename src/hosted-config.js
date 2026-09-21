@@ -2,8 +2,8 @@ const fs = require('fs');
 const path = require('path');
 
 const DEFAULT_HOSTED_CONFIG = Object.freeze({
-  backendUrl: 'http://127.0.0.1:8788',
-  frontendUrl: '',
+  backendUrl: 'https://api.laserreach.com',
+  frontendUrl: 'https://laserreach.com',
   tenantId: '',
   jwtToken: '',
   analysisModel: 'gpt-5-mini',
@@ -55,8 +55,14 @@ class HostedConfigStore {
   _writeRoot(root) {
     const p = this._getSettingsPath();
     const dir = path.dirname(p);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(p, JSON.stringify(root || {}, null, 2));
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    // The hosted settings file contains a bearer token. Keep both the
+    // containing directory and file private even when the process umask is
+    // permissive or an existing path was created with broader permissions.
+    try { fs.chmodSync(dir, 0o700); } catch (_) {}
+    try { fs.chmodSync(p, 0o600); } catch (_) {}
+    fs.writeFileSync(p, JSON.stringify(root || {}, null, 2), { mode: 0o600 });
+    try { fs.chmodSync(p, 0o600); } catch (_) {}
   }
 
   get() {

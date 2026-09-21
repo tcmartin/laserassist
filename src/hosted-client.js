@@ -78,13 +78,21 @@ class HostedApiClient {
     this.onAsrMessage = typeof onAsrMessage === 'function' ? onAsrMessage : () => {};
 
     this._asrSocket = null;
+    this._asrSocketKey = null;
     this._asrSocketReady = null;
+    this._asrSocketReadyKey = null;
+    this._asrSocketGeneration = 0;
+    this._asrSocketConnecting = new Map();
     this._asrSocketReqSeq = 0;
     this._asrSocketPending = new Map();
     this._asrSocketDisabledUntil = 0;
 
     this._analysisSocket = null;
+    this._analysisSocketKey = null;
     this._analysisSocketReady = null;
+    this._analysisSocketReadyKey = null;
+    this._analysisSocketGeneration = 0;
+    this._analysisSocketConnecting = new Map();
     this._analysisSocketReqSeq = 0;
     this._analysisSocketPending = new Map();
     this._analysisSocketDisabledUntil = 0;
@@ -124,8 +132,15 @@ class HostedApiClient {
       return {
         get socket() { return self._analysisSocket; },
         set socket(v) { self._analysisSocket = v; },
+        get socketKey() { return self._analysisSocketKey; },
+        set socketKey(v) { self._analysisSocketKey = v; },
         get ready() { return self._analysisSocketReady; },
         set ready(v) { self._analysisSocketReady = v; },
+        get readyKey() { return self._analysisSocketReadyKey; },
+        set readyKey(v) { self._analysisSocketReadyKey = v; },
+        get generation() { return self._analysisSocketGeneration; },
+        set generation(v) { self._analysisSocketGeneration = v; },
+        get connecting() { return self._analysisSocketConnecting; },
         get pending() { return self._analysisSocketPending; },
         get reqSeq() { return self._analysisSocketReqSeq; },
         set reqSeq(v) { self._analysisSocketReqSeq = v; },
@@ -136,8 +151,15 @@ class HostedApiClient {
     return {
       get socket() { return self._asrSocket; },
       set socket(v) { self._asrSocket = v; },
+      get socketKey() { return self._asrSocketKey; },
+      set socketKey(v) { self._asrSocketKey = v; },
       get ready() { return self._asrSocketReady; },
       set ready(v) { self._asrSocketReady = v; },
+      get readyKey() { return self._asrSocketReadyKey; },
+      set readyKey(v) { self._asrSocketReadyKey = v; },
+      get generation() { return self._asrSocketGeneration; },
+      set generation(v) { self._asrSocketGeneration = v; },
+      get connecting() { return self._asrSocketConnecting; },
       get pending() { return self._asrSocketPending; },
       get reqSeq() { return self._asrSocketReqSeq; },
       set reqSeq(v) { self._asrSocketReqSeq = v; },
@@ -148,8 +170,17 @@ class HostedApiClient {
 
   async _ensureSocket(kind, path) {
     const state = this._socketState(kind);
-    if (state.socket && state.socket.readyState === WebSocket.OPEN) return;
-    if (state.ready) return state.ready;
+    const connectionKey = this._buildSocketUrl(path);
+    if (state.socket && state.socket.readyState === WebSocket.OPEN && state.socketKey === connectionKey) return;
+    if (state.socket && state.socket.readyState === WebSocket.OPEN && state.socketKey !== connectionKey) {
+      await this._closeSocket(kind);
+    }
+    if (state.ready && state.readyKey === connectionKey) {
+      await state.ready;
+      if (state.socket && state.socket.readyState === WebSocket.OPEN && state.socketKey === connectionKey) return;
+    } else if (state.ready) {
+      await this._closeSocket(kind);
+    }
     if (Date.now() < state.disabledUntil) {
       // Backoff should throttle reconnect attempts, not hard-fail live audio.
       await delay(state.disabledUntil - Date.now());
@@ -157,18 +188,27 @@ class HostedApiClient {
       if (state.ready) return state.ready;
     }
 
-    const urls = buildFallbackUrls(this._buildSocketUrl(path));
+    const urls = buildFallbackUrls(connectionKey);
+    const generation = state.generation;
     const connectOne = (url) => new Promise((resolve, reject) => {
       let done = false;
       let opened = false;
       const finish = (fn, value) => {
         if (done) return;
         done = true;
+        state.connecting.delete(ws);
         fn(value);
       };
 
       const ws = new WebSocket(url, { handshakeTimeout: 10000 });
+      state.connecting.set(ws, () => {
+        try { ws.close(); } catch (_) {}
+        finish(reject, new Error(`${kind}_ws_closed_during_connect`));
+      });
       state.socket = ws;
+      state.socketKey = connectionKey;
+
+      const isCurrent = () => state.generation === generation && state.socket === ws;
 
       const clearPending = (reason) => {
         for (const [, pending] of state.pending) {
@@ -180,10 +220,16 @@ class HostedApiClient {
 
       ws.on('open', () => {
         opened = true;
+        if (!isCurrent()) {
+          try { ws.close(); } catch (_) {}
+          finish(reject, new Error(`${kind}_ws_closed_during_connect`));
+          return;
+        }
         finish(resolve, undefined);
       });
 
       ws.on('message', (raw) => {
+        if (!isCurrent()) return;
         const parsed = parseSocketMessage(raw);
         if (!parsed) return;
         const reqId = String(parsed?.request_id || '').trim();
@@ -241,12 +287,17 @@ class HostedApiClient {
 
       ws.on('error', (err) => {
         const reason = `${kind}_ws_error:${String(err?.message || err)}`;
-        state.socket = null;
-        if (opened) {
-          clearPending(reason);
-          state.ready = null;
-          state.disabledUntil = Date.now() + 10000;
-        } else {
+        if (isCurrent()) {
+          state.socket = null;
+          state.socketKey = null;
+          if (opened) {
+            clearPending(reason);
+            state.ready = null;
+            state.readyKey = null;
+            state.disabledUntil = Date.now() + 10000;
+          }
+        }
+        if (!opened) {
           try {
             ws.close();
           } catch (_) {
@@ -257,35 +308,49 @@ class HostedApiClient {
       });
 
       ws.on('close', () => {
-        state.socket = null;
-        if (opened) {
-          clearPending(`${kind}_ws_closed`);
-          state.ready = null;
-        } else {
+        if (isCurrent()) {
+          state.socket = null;
+          state.socketKey = null;
+          if (opened) {
+            clearPending(`${kind}_ws_closed`);
+            state.ready = null;
+            state.readyKey = null;
+          }
+        }
+        if (!opened) {
           finish(reject, new Error(`${kind}_ws_closed_during_connect`));
         }
       });
     });
 
-    state.ready = (async () => {
+    const readyPromise = (async () => {
       let lastError = null;
       for (const url of urls) {
         try {
           await connectOne(url);
+          if (state.generation !== generation) {
+            throw new Error(`${kind}_ws_closed_during_connect`);
+          }
           state.disabledUntil = 0;
           return;
         } catch (err) {
+          if (state.generation !== generation) throw err;
           lastError = err;
         }
       }
       state.disabledUntil = Date.now() + 10000;
       throw lastError || new Error(`${kind}_ws_error:connect_failed`);
     })();
+    state.ready = readyPromise;
+    state.readyKey = connectionKey;
 
     try {
-      await state.ready;
+      await readyPromise;
     } catch (err) {
-      state.ready = null;
+      if (state.ready === readyPromise) {
+        state.ready = null;
+        state.readyKey = null;
+      }
       throw err;
     }
   }
@@ -300,15 +365,23 @@ class HostedApiClient {
 
   async _closeSocket(kind) {
     const state = this._socketState(kind);
-    if (state.socket) {
+    state.generation += 1;
+    const socket = state.socket;
+    state.socket = null;
+    state.socketKey = null;
+    state.ready = null;
+    state.readyKey = null;
+    state.disabledUntil = 0;
+    for (const cancel of state.connecting.values()) {
+      cancel();
+    }
+    if (socket) {
       try {
-        state.socket.close();
+        socket.close();
       } catch (_) {
         // no-op
       }
     }
-    state.socket = null;
-    state.ready = null;
     for (const [, pending] of state.pending) {
       clearTimeout(pending.timer);
       pending.reject(new Error(`${kind}_ws_closed`));
@@ -445,6 +518,7 @@ class HostedApiClient {
     maxCompletionTokens,
     pipelineId,
     eventId,
+    callId,
     model,
   }) {
     const out = await this._sendSocketRequest(
@@ -457,6 +531,7 @@ class HostedApiClient {
         max_completion_tokens: maxCompletionTokens,
         pipeline_id: pipelineId || undefined,
         event_id: eventId || undefined,
+        call_id: callId || undefined,
         model: model || undefined,
       },
       180000,
@@ -532,7 +607,7 @@ class HostedApiClient {
     return this._transcribeWavViaSocket(wavBuffer);
   }
 
-  async analyze({ transcript, prompt, analysisType, maxCompletionTokens, pipelineId, eventId, model }) {
+  async analyze({ transcript, prompt, analysisType, maxCompletionTokens, pipelineId, eventId, callId, model }) {
     return this._analyzeViaSocket({
       transcript,
       prompt,
@@ -540,6 +615,7 @@ class HostedApiClient {
       maxCompletionTokens,
       pipelineId,
       eventId,
+      callId,
       model,
     });
   }

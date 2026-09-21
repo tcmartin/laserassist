@@ -355,7 +355,7 @@ async function runVoiceE2E() {
     JWT_SECRET_KEY: jwtSecret,
     PORT: String(backendPort),
   };
-  // Flask-Sock's Intelli endpoints require the repository's gevent WebSocket
+  // flask_sockets' Intelli endpoints require the repository's gevent WebSocket
   // worker; Werkzeug serves the HTTP health route but answers WS upgrades 404.
   const backend = spawn(pythonBin, ['-m', 'gunicorn', '-k', 'customworker.CustomGeventWebSocketWorker', '-w', '1', '--bind', `127.0.0.1:${backendPort}`, '--access-logfile', '-', '--error-logfile', '-', 'app:app'], {
     cwd: backendRoot,
@@ -448,6 +448,7 @@ async function runVoiceE2E() {
     await renderer.evaluate(`window.electronAPI.sessionAppendTranscript(${JSON.stringify(sessionId)}, ${JSON.stringify({ text: transcript, ts: new Date().toISOString() })})`);
 
     const analysisId = `e2e-analysis-${crypto.randomUUID()}`;
+    const analysisStartedAt = Date.now();
     await renderer.evaluate(`window.electronAPI.sendAnalysisRequest(${JSON.stringify({
       id: analysisId,
       transcript,
@@ -456,7 +457,6 @@ async function runVoiceE2E() {
       model: 'gpt-5-mini',
       pipelineId: fixture.pipeline,
       eventId: `${fixture.pipeline}_call`,
-      maxCompletionTokens: 1000,
     })})`);
     let analysis;
     try {
@@ -469,15 +469,17 @@ async function runVoiceE2E() {
     } catch (error) {
       const observed = await renderer.evaluate(`({
         statuses: window.__intelliE2E.status
-          .filter((msg) => !msg.requestId || msg.requestId === ${JSON.stringify(analysisId)})
-          .map((msg) => ({ type: msg.type || '', status: msg.status || '', message: msg.message || '' })),
+          .filter((msg) => Number(msg.observed_at || 0) >= ${analysisStartedAt})
+          .map((msg) => ({ requestId: msg.requestId || '', type: msg.type || '', status: msg.status || '', message: msg.message || '' })),
         analysis: window.__intelliE2E.analysis
           .filter((msg) => msg.id === ${JSON.stringify(analysisId)})
           .map((msg) => ({ id: msg.id || '', type: msg.type || '', error: msg.error ? String(msg.error).slice(0, 240) : '' })),
       })`);
       const phase = observed.statuses.some((msg) => msg.status === 'running')
         ? 'backend accepted analyze and remains inside context/provider work'
-        : 'no correlated running status reached Electron';
+        : observed.statuses.length
+          ? 'analysis status reached Electron without a running phase'
+          : 'no analysis status reached Electron after IPC send';
       throw new Error(`${error.message}; phase=${phase}; observed=${JSON.stringify(observed)}; backend_state=${backend.exitCode === null ? 'running' : `exit:${backend.exitCode}`}; backend_logs=${JSON.stringify(summarizeBackendOutput(backendOutput))}`);
     }
     const result = analysis.find((msg) => msg.id === analysisId);
@@ -486,13 +488,13 @@ async function runVoiceE2E() {
       ? 'provider_authentication'
       : analysisError ? 'provider_request' : '';
     assert.equal(result?.error, undefined, errorClass ? `analysis provider request failed: ${errorClass}` : 'analysis returned an error');
-    assert.ok(result?.usage && Number(result.usage.total_tokens) > 0, 'analysis includes provider usage');
-    assert.equal(result?.context?.pipeline_id, fixture.pipeline);
-    assert.equal(result?.context?.person?.full_name, 'Jordan Buyer');
-    assert.equal(result?.context?.company?.name, 'Acme Vector');
-    const coachingText = JSON.stringify(result.parsed || result.text || '').toLowerCase();
+    assert.ok(result?.raw?.usage && Number(result.raw.usage.total_tokens) > 0, 'analysis includes provider usage');
+    assert.equal(result?.raw?.context?.pipeline_id, fixture.pipeline);
+    assert.equal(result?.raw?.context?.person?.full_name, 'Jordan Buyer');
+    assert.equal(result?.raw?.context?.company?.name, 'Acme Vector');
+    const coachingText = JSON.stringify(result.raw?.parsed || result.results || result.raw?.text || '').toLowerCase();
     assert.ok(/follow|next.?step|owner|summary|workflow/.test(coachingText), 'coaching contains a scenario-specific action');
-    const storedAnalysisEntry = { ts: new Date().toISOString(), results: result.parsed || result.text };
+    const storedAnalysisEntry = { ts: new Date().toISOString(), results: result.raw?.parsed || result.results || result.raw?.text };
     await renderer.evaluate(`window.electronAPI.sessionAppendAnalysis(${JSON.stringify(sessionId)}, ${JSON.stringify(storedAnalysisEntry)})`);
     await new Promise((resolve) => setTimeout(resolve, 750));
     await renderer.evaluate(`window.electronAPI.sessionEnd(${JSON.stringify(sessionId)}, ${JSON.stringify({ ended_at: new Date().toISOString(), transcript_len: transcript.length })})`);
@@ -507,7 +509,7 @@ async function runVoiceE2E() {
     assert.equal(savedTranscript.payload?.text, transcript);
     assert.ok(savedAnalysis, 'session stores the coaching result');
     assert.deepEqual(savedAnalysis.payload?.results, storedAnalysisEntry.results);
-    outcome = { transcriptLength: transcript.length, usage: result.usage, eventCount: stored.session.events.length };
+    outcome = { transcriptLength: transcript.length, usage: result.raw.usage, eventCount: stored.session.events.length };
   } catch (error) {
     primaryError = error;
   } finally {
@@ -542,7 +544,7 @@ async function runVoiceE2E() {
 
 test('generated voice reaches hosted ASR, context coaching, and durable session read', {
   skip: runEnabled ? false : 'set RUN_INTELLI_VOICE_E2E=1 to authorize the provider-backed local E2E',
-  timeout: 300000,
+  timeout: 240000,
 }, async () => {
   const evidence = await runVoiceE2E();
   assert.ok(evidence.transcriptLength > 10);

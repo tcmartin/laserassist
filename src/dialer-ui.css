@@ -1,0 +1,34 @@
+.dialer-shell[hidden], .dialer-shell [hidden] { display:none !important; }
+.dialer-shell { position:absolute; inset:110px 10px 10px; overflow:auto; padding:22px; border:1px solid #344866; border-radius:16px; background:#101827; color:#edf3ff; font-size:14px; }
+.dialer-shell h1 { margin:0; font-size:23px; letter-spacing:-.4px; }
+.dialer-shell h2 { margin:0 0 15px; font-size:16px; }
+.dialer-shell h3 { margin:18px 0 8px; font-size:14px; }
+.dialer-shell p { line-height:1.5; }
+.dialer-shell .muted { color:#b2c2da; }
+.dialer-shell .dialer-head, .dialer-shell .dialer-row { display:flex; gap:10px; align-items:center; justify-content:space-between; }
+.dialer-shell .dialer-head { margin-bottom:20px; }
+.dialer-shell .dialer-grid { display:grid; grid-template-columns:minmax(230px,.85fr) minmax(290px,1.15fr) minmax(260px,1fr); gap:16px; align-items:start; }
+.dialer-shell .dialer-card { padding:18px; background:#172235; border:1px solid #33445e; border-radius:12px; min-width:0; }
+.dialer-shell label { display:block; font-weight:600; margin:14px 0 6px; }
+.dialer-shell input, .dialer-shell select, .dialer-shell textarea { display:block; width:100%; background:#0d1625; border:1px solid #526681; border-radius:7px; padding:10px; color:#f1f5ff; font:inherit; }
+.dialer-shell textarea { min-height:72px; resize:vertical; }
+.dialer-shell button { min-height:38px; padding:8px 12px; border:1px solid #5c7190; border-radius:7px; color:#edf3ff; background:#23344f; font:inherit; font-weight:600; cursor:pointer; transition:background .15s; }
+.dialer-shell button:hover:not(:disabled) { background:#334d71; }
+.dialer-shell button:disabled { opacity:.48; cursor:default; }
+.dialer-shell .primary { background:#2260b6; border-color:#75a9ff; }
+.dialer-shell .danger { background:#902d3c; border-color:#f394a1; }
+.dialer-shell :focus-visible { outline:3px solid #8fb9ff; outline-offset:3px; }
+.dialer-shell .wide { width:100%; margin-top:14px; }
+.dialer-shell .person-list { display:grid; gap:7px; margin:12px 0; max-height:225px; overflow:auto; }
+.dialer-shell .person-list button { text-align:left; font-weight:400; }
+.dialer-shell .person-list button[aria-pressed=true] { border-color:#95c0ff; background:#28456c; }
+.dialer-shell .dialer-status { min-height:24px; padding:9px 0; color:#c4d8f7; }
+.dialer-shell .dialer-status[data-error=true] { color:#ffb3bb; }
+.dialer-shell .script-preview { white-space:pre-wrap; overflow-wrap:anywhere; font:inherit; line-height:1.55; max-height:300px; overflow:auto; margin:0; }
+.dialer-shell fieldset { border:0; padding:0; margin:0; min-width:0; }
+.dialer-shell .badge { display:inline-block; padding:5px 9px; border-radius:20px; border:1px solid #607591; font-size:12px; color:#cce0ff; }
+.dialer-shell details { margin-top:20px; border-top:1px solid #3b4e68; padding-top:16px; }
+.dialer-shell summary { cursor:pointer; font-weight:600; }
+@media(max-width:1000px) { .dialer-shell .dialer-grid { grid-template-columns:1fr 1fr; } .dialer-shell .review-card { grid-column:1/-1; } }
+@media(max-width:600px) { .dialer-shell { padding:14px; } .dialer-shell .dialer-grid { grid-template-columns:1fr; } .dialer-shell .dialer-head { align-items:flex-start; } }
+@media(prefers-reduced-motion:reduce) { .dialer-shell button { transition:none; } }

@@ -67,6 +67,9 @@ test('Main process contract is hosted-only with auth and panel IPC wiring', () =
   assert.match(mainJs, /setWindowOpenHandler\(\(\) => \(\{/);
   assert.match(mainJs, /overrideBrowserWindowOptions/);
   assert.match(mainJs, /did-create-window/);
+  assert.match(mainJs, /INTELLI_STARTUP_SMOKE/);
+  assert.match(mainJs, /closeAnalysisStream/);
+  assert.match(mainJs, /closeAsrStream/);
   assert.match(mainJs, /ready-to-show/);
   assert.match(mainJs, /2fa_required/);
   assert.match(mainJs, /list\.push\(`\$\{base\}\/oauth-bridge`\)[\s\S]*list\.push\(`\$\{base\}\/login`\)/);
@@ -78,11 +81,10 @@ test('Main process contract is hosted-only with auth and panel IPC wiring', () =
   assert.equal(mainJs.includes('Transformers.js'), false);
 });
 
-test('OAuth bridge persists successful auth token for Electron capture', () => {
-  const bridgeJs = fs.readFileSync(
-    path.join(__dirname, '..', '..', 'laserreach_front', 'pages', 'oauth-bridge.js'),
-    'utf8',
-  );
-  assert.match(bridgeJs, /localStorage\.setItem\('jwt', accessToken\)/);
-  assert.match(bridgeJs, /window\.opener\.postMessage/);
+test('Electron auth capture reads browser token and persists org selection', () => {
+  const mainJs = readFile('main.js');
+  assert.match(mainJs, /localStorage\.getItem\('jwt'\)/);
+  assert.match(mainJs, /localStorage\.getItem\('currentOrgId'\)/);
+  assert.match(mainJs, /applyAuthToken\(/);
+  assert.match(mainJs, /hostedConfigStore\.set\(/);
 });

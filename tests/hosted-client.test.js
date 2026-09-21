@@ -7,6 +7,7 @@ const { HostedApiClient } = require('../src/hosted-client');
 
 function createServer() {
   const requests = [];
+  const analysisMessages = [];
   const server = http.createServer(async (req, res) => {
     const chunks = [];
     req.on('data', (c) => chunks.push(c));
@@ -129,6 +130,7 @@ function createServer() {
   analysisWss.on('connection', (ws) => {
     ws.on('message', (raw) => {
       const msg = JSON.parse(String(raw || '{}'));
+      analysisMessages.push(msg);
       if (msg.op === 'session_start') {
         ws.send(JSON.stringify({
           op: 'session_started',
@@ -205,6 +207,7 @@ function createServer() {
   return {
     server,
     requests,
+    analysisMessages,
     close: () => {
       asrWss.close();
       analysisWss.close();
@@ -435,8 +438,8 @@ test('HostedApiClient prefers websocket ASR transport when backend websocket is 
   }
 });
 
-test('HostedApiClient emits analysis websocket status updates', async () => {
-  const { server, close } = createServer();
+test('HostedApiClient emits analysis websocket status updates and call binding', async () => {
+  const { server, analysisMessages, close } = createServer();
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const port = server.address().port;
   const statuses = [];
@@ -457,11 +460,14 @@ test('HostedApiClient emits analysis websocket status updates', async () => {
       analysisType: 'full',
       maxCompletionTokens: 1000,
       model: 'gpt-5-mini',
+      callId: 'call_' + 'a'.repeat(64),
     });
     assert.equal(out.success, true);
     assert.equal((out.parsed || {}).summary, 'ok');
     assert.ok(statuses.some((s) => s.type === 'analysis-status' && s.status === 'running'));
     assert.ok(statuses.some((s) => s.type === 'analysis-status' && s.status === 'done'));
+    const analyzeMessage = analysisMessages.find((message) => message.op === 'analyze');
+    assert.equal(analyzeMessage.call_id, 'call_' + 'a'.repeat(64));
     await client.closeAsrStream();
     await client.closeAnalysisStream();
   } finally {

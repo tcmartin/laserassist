@@ -1,0 +1,21 @@
+{
+  "record_type": "sanitized_evidence_index",
+  "date": "2026-09-20",
+  "raw_log_retained": false,
+  "raw_log_reason": "The authorized run emitted only terminal stdout; credentials, JWTs, transcripts, and provider response bodies were intentionally not persisted.",
+  "provider_run": {
+    "harness": "tests/electron-provider-e2e.test.js",
+    "duration_seconds": 26.4,
+    "transcript_chars": 97,
+    "session_events": 2,
+    "provider_total_tokens": 896,
+    "assertions": ["Deepgram transcript", "coaching result", "prepared context", "session persistence", "post-teardown readback", "fixture cleanup"]
+  },
+  "offline_run": {
+    "harness": "tests/electron-backend-offline.test.js",
+    "analysis_ms": 421,
+    "provider_calls": 0,
+    "asr_calls": 0
+  },
+  "canonical_narrative": "docs/INTELLI_VOICE_E2E_20260920.md"
+}

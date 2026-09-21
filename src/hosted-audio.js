@@ -108,9 +108,14 @@ class HostedAudioTranscriber {
     this.bytes = 0;
     this.inFlight = false;
     this.sendQueue = Promise.resolve();
+    this.sessionId = 0;
+    this.stopPromise = null;
   }
 
   start({ sampleRate = 16000, flushIntervalMs } = {}) {
+    const sessionId = this.sessionId + 1;
+    this.sessionId = sessionId;
+    this.stopPromise = null;
     this.active = true;
     this.streamReady = !this.streaming;
     this.streamStartPromise = null;
@@ -134,39 +139,52 @@ class HostedAudioTranscriber {
         punctuate: true,
         smartFormat: true,
       };
-      this.streamStartPromise = Promise.resolve(this.startStreamFn(opts))
+      const startupPromise = Promise.resolve(this.startStreamFn(opts))
         .then(() => {
+          if (this.sessionId !== sessionId) return;
           this.streamReady = true;
           // Push any buffered audio accumulated during stream startup.
-          return this.flush(false);
+          return this.flush(false, sessionId);
         })
         .catch((err) => {
+          if (this.sessionId !== sessionId) return;
           this.streamReady = false;
           this.onError({ op: 'error', message: `ASR stream start failure: ${String(err.message || err)}` });
         });
+      this.streamStartPromise = startupPromise;
     }
     this.onStatus({ op: 'status', message: 'Hosted ASR started' });
   }
 
   async stop() {
+    if (this.stopPromise) return this.stopPromise;
+    const sessionId = this.sessionId;
+    const startupPromise = this.streamStartPromise;
     this.active = false;
     this._stopTimer();
-    await this.flush(true);
-    try {
-      if (this.streamStartPromise) {
-        await this.streamStartPromise;
-      }
-      await this.sendQueue;
-    } catch (_) {
-      // no-op
-    }
-    if (this.streaming && this.stopStreamFn) {
+    this.stopPromise = (async () => {
       try {
-        await this.stopStreamFn();
-      } catch (err) {
-        this.onError({ op: 'error', message: `ASR stream stop failure: ${String(err.message || err)}` });
+        if (startupPromise) await startupPromise;
+        // Startup must complete first: force flush is intentionally allowed to
+        // send a final partial buffer once the hosted stream is ready.
+        await this.flush(true, sessionId);
+        await this.sendQueue;
+      } catch (_) {
+        // no-op
       }
-    }
+      if (this.sessionId !== sessionId) return;
+      if (this.streaming && this.stopStreamFn) {
+        try {
+          await this.stopStreamFn();
+        } catch (err) {
+          this.onError({ op: 'error', message: `ASR stream stop failure: ${String(err.message || err)}` });
+        }
+      }
+      this.streamReady = false;
+      this.streamStartPromise = null;
+      this.stopPromise = null;
+    })();
+    return this.stopPromise;
   }
 
   addFloat32Chunk(float32Array) {
@@ -191,7 +209,8 @@ class HostedAudioTranscriber {
     }
   }
 
-  async flush(force = false) {
+  async flush(force = false, sessionId = this.sessionId) {
+    if (sessionId !== this.sessionId) return;
     if (!this.chunks.length) return;
     if (this.streaming && !this.streamReady) return;
     if (!force && this.bytes < this.minBytes) return;
@@ -201,6 +220,7 @@ class HostedAudioTranscriber {
     this.bytes = 0;
 
     const sendWork = async () => {
+      if (sessionId !== this.sessionId) return;
       try {
         if (this.streaming && this.sendPcmChunkFn) {
           await this.sendPcmChunkFn(pcm);

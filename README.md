@@ -1,135 +1,72 @@
-# Insighto
+# Laserreach Intelli
 
-<p align="center">
-  <img src="pics/screen.png" alt="Cluely screenshot" width="600"/>
-</p>
+Laserreach Intelli is the hosted desktop overlay for live call context. It runs as an Electron bar that stays available above the call window and sends audio and transcript context to the Laserreach backend.
 
-An AI-powered transcription and analysis tool built with Electron, featuring local LLM processing, real-time audio transcription, and extensible MCP (Model Context Protocol) integration.
+The packaged runtime uses hosted services:
 
-## Features
+- Deepgram handles live speech recognition through the hosted HTTP and WebSocket endpoints.
+- The configured backend model handles call analysis and coaching responses.
+- Browser sign-in captures the authenticated token inside the Electron login window. The selected organization is stored with the hosted configuration.
+- Session start, transcript events, analysis events, and session end are sent to the hosted session API.
 
-### 🎙️ Audio Transcription
-- Real-time audio recording and transcription using Whisper
-- Support for multiple audio formats
-- Automatic transcript management and storage
+No local model, model download, MCP server, or local ASR process is required by the packaged app. Legacy source files remain in the repository for historical reference and are excluded from Electron packages.
 
-### 🤖 Local LLM Processing
-- Local AI chat interface with transcript context
-- Intelligent transcript analysis and insights
-- Performance-optimized request queuing system
-- Support for both chat and analysis workflows
+**Call** opens the contact search, caller number and script workspace. Review prepares a frozen contact/script snapshot; **Start call** begins audio and signaling. User and local-agent templates can be selected and edited. The call mixes microphone and received audio for transcription. Number checkout displays server-configured availability and pricing.
 
-### ⌨️ Global Shortcuts
-- **macOS**: `Cmd+Shift+Space` to show/hide the application
-- **Windows/Linux**: `Ctrl+Shift+Space` to show/hide the application
-- Quick access from anywhere in the system
+This is a validated development increment. Live calling requires the matching backend and provider configuration; live number purchases remain disabled pending billing lifecycle and pricing setup. Signing, notarization and production release are not complete. See `docs/DIALER_UI_DESIGN_20260920.md` for validation and remaining work.
 
-### 🔌 MCP (Model Context Protocol) Integration
-- Extensible plugin system for external tools and services
-- Built-in support for:
-  - Filesystem operations
-  - Brave Search API integration
-- Configuration management UI
-- Server connection testing and validation
+## Run locally
 
-### 🎨 Modern UI
-- Transparent overlay window with blur effects
-- Resizable and draggable interface
-- Always-on-top functionality for quick access
-- Custom app icon and branding
-
-## Model Management
-
-The application uses the Gemma 3 4B IT model in GGUF format for local LLM processing. The model file will be automatically downloaded when you run the application.
-
-### Model Details:
-- **Name**: gemma-3-4b-it-Q4_0.gguf
-- **Source**: https://huggingface.co/unsloth/gemma-3-4b-it-GGUF/
-- **Location**: `models/gemma-3-4b-it-Q4_0.gguf`
-- **Size**: ~2.5GB (quantized for optimal performance)
-
-### Manual Model Download
-
-If you want to download the model manually:
+Requirements: Node.js 18 or newer and npm.
 
 ```bash
-node download-model.js
-```
-
-## MCP Configuration
-
-MCP servers are configured in `.insighto/settings/mcp.json`. The application includes:
-
-- **Filesystem Server**: File system operations and management
-- **Brave Search**: Web search capabilities with API integration
-
-You can add, remove, or configure MCP servers through the application's settings interface.
-
-## Development
-
-### Prerequisites
-- Node.js (v16 or higher)
-- npm or yarn
-
-### Setup
-
-```bash
-# Install dependencies
-npm install
-
-# Run the application (includes automatic model download)
+npm ci
 npm start
-
-# Test app icon functionality
-npm run test-icon
-
-# Build for distribution
-npm run build
 ```
 
-### Project Structure
+`npm start` uses the Electron version from the lockfile and refuses to download a replacement at runtime. It uses a temporary project-local user-data directory for development. Installed builds default to `https://api.laserreach.com` and `https://laserreach.com`; explicit local backend/frontend URLs remain supported through the overlay configuration.
 
-```
-insighto/
-├── main.js              # Main Electron process
-├── index.html           # Application UI
-├── llm-worker.js        # LLM processing worker thread
-├── preload.js           # Electron preload script
-├── mcp-manager.js       # MCP server management
-├── mcp-config-manager.js # MCP configuration handling
-├── model-downloader.js  # Automatic model downloading
-├── models/              # LLM model storage
-├── icons/               # Application icons
-└── .insighto/
-    └── settings/
-        └── mcp.json     # MCP server configuration
-```
+The overlay opens with:
 
-## Usage
+- macOS: `Cmd+Shift+Space`
+- Windows/Linux: `Ctrl+Shift+Space`
 
-1. **Launch**: Run `npm start` or use the built application
-2. **Global Access**: Use `Cmd+Shift+Space` (Mac) or `Ctrl+Shift+Space` (Windows/Linux) to show/hide
-3. **Record**: Click the record button to start audio transcription
-4. **Chat**: Interact with the AI using your transcripts as context
-5. **Analyze**: Use the analysis features for deeper insights
-6. **Configure**: Access MCP settings to add external tools and services
+Select **Sign in** in the bar. The browser window handles login and organization selection. The bar never asks users to paste a JWT. Sign out clears the stored hosted credentials and the active call state.
 
-## Building for Distribution
+## Validate
 
 ```bash
-# Build for current platform
-npm run build
-
-# Build specifically for macOS
-npm run build-mac
+npm test
+npm run test:electron
+npm run build-check
 ```
 
-The built application will be available in the `dist/` directory.
+The Electron startup test launches the real Electron binary with a disposable user-data directory, waits for the renderer to finish loading, and then terminates the smoke process. It is skipped with an explicit reason when dependencies have not been installed. `npm test` contains the hosted client, hosted audio, session lifecycle, auth, and overlay contract tests.
 
-## Technical Details
+## Package
 
-- **Framework**: Electron with Node.js backend
-- **AI Model**: Gemma 3 4B IT (GGUF format) via node-llama-cpp
-- **Audio Processing**: Whisper via nodejs-whisper
-- **UI**: Modern web technologies with native system integration
-- **Architecture**: Multi-threaded with worker processes for AI operations
+```bash
+npm run build-mac
+npm run build-check-linux
+npm run build-check-win
+```
+
+The builder includes the hosted runtime, dialer UI, assets, and `src/` modules. Tests, documentation, local model/ASR files, old MCP/local-worker sources, and build helpers are excluded from the application package. `npm run build` and `npm run build-dmg` use this same configuration and never install dependencies during the build.
+
+## Runtime layout
+
+```text
+main.js                 Electron lifecycle, auth window, overlay and hosted IPC
+preload.js              Context-isolated renderer API
+index.html              Overlay UI and hosted auth/org/session controls
+src/hosted-config.js    Persisted hosted backend/org configuration
+src/hosted-client.js    HTTP/WebSocket client for hosted ASR, analysis and sessions
+src/hosted-audio.js     PCM buffering and hosted transcription adapter
+src/calling-client.js   Named authenticated calling HTTP operations
+src/call-signaling.js   One-call WebSocket lifecycle and bounded signaling
+src/call-media.js       WebRTC microphone/remote audio and transcription mix
+src/dialer-ui.js        Contact, script, review, call and purchase controls
+tests/                  Node test suite and real Electron startup smoke
+```
+
+The backend contract and rollout decisions are documented in `../backend/docs/CALLING_RELEASE_DESIGN_20260920.md` in the coordinated release worktree.

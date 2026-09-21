@@ -1,20 +1,27 @@
 const { app, BrowserWindow, ipcMain, globalShortcut, shell, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { fileURLToPath } = require('url');
 
-const { HostedConfigStore } = require('./src/hosted-config');
+const { DEFAULT_HOSTED_CONFIG, normalizeConfig, HostedConfigStore } = require('./src/hosted-config');
 const { HostedApiClient } = require('./src/hosted-client');
 const { HostedAudioTranscriber } = require('./src/hosted-audio');
+const { CallingClient } = require('./src/calling-client');
+const { CallSignaling } = require('./src/call-signaling');
 
 let barWindow = null;
 let authWindow = null;
 let hostedConfigStore = null;
 let hostedClient = null;
+let callingClient = null;
+let callSignaling = null;
 let audioTranscriber = null;
 let isPinned = true;
 let panelCounter = 0;
 const panelWindows = new Map();
 const meetingAlertedIds = new Set();
+let hostedConfigGeneration = 0;
+const hostedSessionGenerations = new Map();
 const captureProtectionMode = String(process.env.INTELLI_CAPTURE_PROTECTION || 'strict').trim().toLowerCase();
 
 function applyContentProtection(win, label = 'window') {
@@ -66,6 +73,10 @@ function createHostedRuntime() {
       }
     },
     onAsrMessage: (msg) => safeSend('asr-message', msg),
+  });
+  callingClient = new CallingClient({
+    transport: hostedClient,
+    getConfig: () => hostedConfigStore.get(),
   });
   audioTranscriber = new HostedAudioTranscriber({
     startStreamFn: (opts) => hostedClient.startAsrStream(opts),
@@ -123,6 +134,13 @@ function createBarWindow() {
   });
 }
 
+function announceStartupSmoke() {
+  if (process.env.INTELLI_STARTUP_SMOKE !== '1' || !barWindow || barWindow.isDestroyed()) return;
+  barWindow.webContents.once('did-finish-load', () => {
+    console.log('[intelli] startup smoke ready');
+  });
+}
+
 function registerShortcuts() {
   const toggleShortcut = process.platform === 'darwin' ? 'Command+Shift+Space' : 'Control+Shift+Space';
   try {
@@ -159,6 +177,41 @@ function ensureHostedConfigured() {
     throw new Error(`Hosted configuration invalid: ${validation.errors.join(', ')}`);
   }
   return validation.config;
+}
+
+function hostedIdentityChanged(current, next) {
+  return String(current?.backendUrl || '') !== String(next?.backendUrl || '')
+    || String(current?.frontendUrl || '') !== String(next?.frontendUrl || '')
+    || String(current?.tenantId || '') !== String(next?.tenantId || '')
+    || String(current?.jwtToken || '') !== String(next?.jwtToken || '');
+}
+
+async function resetHostedConnections() {
+  if (callSignaling) callSignaling.close();
+  // Finish the old stream before changing credentials or tenant. This keeps
+  // the final audio/session messages on the old authenticated channel.
+  if (audioTranscriber) await audioTranscriber.stop();
+  if (hostedClient) {
+    await hostedClient.closeAsrStream();
+    await hostedClient.closeAnalysisStream();
+  }
+}
+
+function beginHostedIdentityChange() {
+  hostedConfigGeneration += 1;
+  hostedSessionGenerations.clear();
+  for (const panel of panelWindows.values()) {
+    if (!panel.isDestroyed()) panel.close();
+  }
+  panelWindows.clear();
+}
+
+function requireCurrentHostedSession(sessionId) {
+  const id = String(sessionId || '').trim();
+  if (!id || hostedSessionGenerations.get(id) !== hostedConfigGeneration) {
+    throw new Error('hosted_session_identity_changed');
+  }
+  return id;
 }
 
 async function fetchJson(url, options = {}) {
@@ -306,20 +359,29 @@ function isUsableAuthToken(token) {
 
 async function applyAuthToken({ token, backendUrl, tenantId, username }) {
   const current = hostedConfigStore.get();
-  const nextBackend = normalizeBackendUrl(backendUrl || current.backendUrl || 'http://127.0.0.1:8788');
-  let nextTenant = String(tenantId || current.tenantId || '').trim();
+  const incomingToken = String(token || '').trim();
+  const nextBackend = normalizeBackendUrl(backendUrl || current.backendUrl || DEFAULT_HOSTED_CONFIG.backendUrl);
+  const tokenChanged = incomingToken !== String(current.jwtToken || '');
+  let nextTenant = String(tenantId || (tokenChanged ? '' : current.tenantId) || '').trim();
   if (!nextTenant) {
-    nextTenant = await inferTenantId(nextBackend, token, nextTenant);
+    nextTenant = await inferTenantId(nextBackend, incomingToken, nextTenant);
   }
 
-  const saved = hostedConfigStore.set({
+  const next = normalizeConfig({
+    ...current,
     backendUrl: nextBackend,
     tenantId: nextTenant,
-    jwtToken: String(token || '').trim(),
+    jwtToken: incomingToken,
   });
+  if (hostedIdentityChanged(current, next)) {
+    beginHostedIdentityChange();
+    await resetHostedConnections();
+  }
+  const saved = hostedConfigStore.set(next);
 
   safeSend('auth-updated', {
     success: true,
+    configChanged: hostedIdentityChanged(current, saved),
     tenantId: saved.tenantId,
     username: username || '',
     backendUrl: saved.backendUrl,
@@ -336,7 +398,7 @@ async function openAuthWindow() {
 
   const cfg = hostedConfigStore.get();
   const candidates = loginUrlCandidates(cfg);
-  const startUrl = candidates[0] || 'http://127.0.0.1:8788';
+  const startUrl = candidates[0] || DEFAULT_HOSTED_CONFIG.frontendUrl;
   const authChildren = new Set();
 
   authWindow = new BrowserWindow({
@@ -867,7 +929,78 @@ function closePanel(key) {
   return { success: true };
 }
 
+function isTrustedCallingSender(event, trustedBar = barWindow) {
+  const sender = event && event.sender;
+  const frame = event && event.senderFrame;
+  if (!sender || !frame || frame !== sender.mainFrame) return false;
+  if (!trustedBar || trustedBar.isDestroyed() || sender !== trustedBar.webContents) return false;
+  try {
+    const parsed = new URL(String(frame.url || ''));
+    if (parsed.protocol !== 'file:' || parsed.search || parsed.hash) return false;
+    return path.resolve(fileURLToPath(parsed)) === path.resolve(path.join(__dirname, 'index.html'));
+  } catch (_) {
+    return false;
+  }
+}
+
+function callingFailure(error) {
+  const message = String(error?.message || 'calling_request_failed');
+  const safe = /^(calling_[a-z0-9_]+|call_signaling_[a-z0-9_]+|HTTP \d{3})$/.test(message) ? message : 'calling_request_failed';
+  return { success: false, error: safe };
+}
+
+async function invokeCalling(event, operation) {
+  if (!isTrustedCallingSender(event)) return { success: false, error: 'calling_untrusted_sender' };
+  try {
+    return await operation();
+  } catch (error) {
+    return callingFailure(error);
+  }
+}
+
+function mediaPayload(payload, extra) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)
+    || Object.keys(payload).some((key) => !['callId', ...extra].includes(key))
+    || !/^call_[0-9a-f]{64}$/.test(payload.callId || '')
+    || Buffer.byteLength(JSON.stringify(payload)) > 160 * 1024) {
+    throw new Error('calling_invalid_media_request');
+  }
+  return payload;
+}
+
+async function startCallingMedia(payload) {
+  mediaPayload(payload, ['offer']);
+  if (!payload.offer || payload.offer.type !== 'offer' || typeof payload.offer.sdp !== 'string'
+    || !payload.offer.sdp || Buffer.byteLength(payload.offer.sdp) > 128 * 1024
+    || Object.keys(payload.offer).some((key) => !['type', 'sdp'].includes(key))) {
+    throw new Error('calling_invalid_offer');
+  }
+  ensureHostedConfigured();
+  if (callSignaling && !callSignaling.closed) throw new Error('calling_call_in_progress');
+  const client = new CallSignaling({
+    callId: payload.callId,
+    getConfig: () => hostedConfigStore.get(),
+    onUpdate: (update) => safeSend('calling-media-update', update),
+    onClose: (state) => {
+      if (callSignaling === client) callSignaling = null;
+      safeSend('calling-media-closed', state);
+    },
+  });
+  // Reserve the active call synchronously before the first connection await.
+  callSignaling = client;
+  return client.start(payload.offer);
+}
+
+function currentCallingMedia(payload, extra = []) {
+  mediaPayload(payload, extra);
+  if (!callSignaling || callSignaling.callId !== payload.callId || callSignaling.closed) {
+    throw new Error('calling_media_not_connected');
+  }
+  return callSignaling;
+}
+
 function cleanup() {
+  if (callSignaling) callSignaling.close();
   try {
     globalShortcut.unregisterAll();
   } catch (_) {}
@@ -900,14 +1033,16 @@ async function handleAnalyzeRequest(payload, fallbackType = 'full') {
   const transcriptContext = String(payload?.transcriptContext || '').trim();
   const transcript = String(payload?.transcript || transcriptContext || prompt).trim();
   if (!transcript) throw new Error('Transcript is required for analysis');
+  const callId = payload?.callId || payload?.call_id || undefined;
 
   return hostedClient.analyze({
     transcript,
     prompt,
     analysisType: payload?.analysisType || payload?.analysis_type || fallbackType,
-    maxCompletionTokens: payload?.maxCompletionTokens || payload?.max_completion_tokens || 12000,
-    pipelineId: payload?.pipelineId || payload?.pipeline_id || cfg.defaultPipelineId || undefined,
+    maxCompletionTokens: payload?.maxCompletionTokens || payload?.max_completion_tokens || 4000,
+    pipelineId: payload?.pipelineId || payload?.pipeline_id || (!callId && cfg.defaultPipelineId) || undefined,
     eventId: payload?.eventId || payload?.event_id || undefined,
+    callId,
     model: payload?.model || cfg.analysisModel || 'gpt-5-mini',
   });
 }
@@ -951,7 +1086,7 @@ function registerIpc() {
   ipcMain.handle('auth-login-password', async (_e, payload) => {
     try {
       const cfg = hostedConfigStore.get();
-      const backendUrl = normalizeBackendUrl(payload?.backendUrl || cfg.backendUrl || 'http://127.0.0.1:8788');
+      const backendUrl = normalizeBackendUrl(payload?.backendUrl || cfg.backendUrl || DEFAULT_HOSTED_CONFIG.backendUrl);
       const username = String(payload?.username || '').trim();
       const password = String(payload?.password || '').trim();
       if (!username || !password) {
@@ -985,11 +1120,22 @@ function registerIpc() {
   ipcMain.handle('auth-signout', async () => {
     try {
       const cfg = hostedConfigStore.get();
-      const saved = hostedConfigStore.set({
+      const next = normalizeConfig({
         ...cfg,
         jwtToken: '',
+        tenantId: '',
       });
-      safeSend('auth-updated', { success: true, signedOut: true, tenantId: saved.tenantId });
+      if (hostedIdentityChanged(cfg, next)) {
+        beginHostedIdentityChange();
+        await resetHostedConnections();
+      }
+      const saved = hostedConfigStore.set(next);
+      safeSend('auth-updated', {
+        success: true,
+        signedOut: true,
+        configChanged: hostedIdentityChanged(cfg, saved),
+        tenantId: saved.tenantId,
+      });
       return { success: true, config: saved };
     } catch (err) {
       return { success: false, error: String(err?.message || err) };
@@ -1066,7 +1212,22 @@ function registerIpc() {
 
   ipcMain.handle('hosted-set-config', async (_e, next) => {
     try {
-      const config = hostedConfigStore.set(next || {});
+      const current = hostedConfigStore.get();
+      const candidate = normalizeConfig({ ...current, ...(next || {}) });
+      const configChanged = hostedIdentityChanged(current, candidate);
+      if (configChanged) {
+        beginHostedIdentityChange();
+        await resetHostedConnections();
+      }
+      const config = hostedConfigStore.set(candidate);
+      if (configChanged) {
+        safeSend('auth-updated', {
+          success: true,
+          configChanged: true,
+          tenantId: config.tenantId,
+          backendUrl: config.backendUrl,
+        });
+      }
       return { success: true, config };
     } catch (err) {
       return { success: false, error: String(err?.message || err) };
@@ -1104,6 +1265,37 @@ function registerIpc() {
       return { success: false, error: String(err?.message || err), reminders: [], count: 0 };
     }
   });
+
+  ipcMain.handle('calling-get-context', (event, payload) => invokeCalling(event, () => callingClient.getContext(payload || {})));
+  ipcMain.handle('calling-search-people', (event, payload) => invokeCalling(event, () => callingClient.searchPeople(payload || {})));
+  ipcMain.handle('calling-set-expanded', (event, expanded) => invokeCalling(event, () => {
+    if (typeof expanded !== 'boolean') throw new Error('calling_invalid_request');
+    const area = screen.getDisplayMatching(barWindow.getBounds()).workArea;
+    barWindow.setMaximumSize(1800, expanded ? Math.min(900, area.height) : 220);
+    barWindow.setSize(Math.min(1120, area.width), expanded ? Math.min(800, area.height - 24) : 108);
+    if (expanded) barWindow.setPosition(Math.max(area.x, Math.min(barWindow.getBounds().x, area.x + area.width - barWindow.getBounds().width)), area.y + 12);
+    return { success: true };
+  }));
+  ipcMain.handle('calling-list-scripts', (event, payload) => invokeCalling(event, () => callingClient.listScripts(payload || {})));
+  ipcMain.handle('calling-get-script', (event, templateId, payload) => invokeCalling(event, () => callingClient.getScript(templateId, payload || {})));
+  ipcMain.handle('calling-create-script', (event, payload) => invokeCalling(event, () => callingClient.createScript(payload || {})));
+  ipcMain.handle('calling-update-script', (event, templateId, payload) => invokeCalling(event, () => callingClient.updateScript(templateId, payload || {})));
+  ipcMain.handle('calling-archive-script', (event, templateId, payload) => invokeCalling(event, () => callingClient.archiveScript(templateId, payload || {})));
+  ipcMain.handle('calling-list-numbers', (event, payload) => invokeCalling(event, () => callingClient.listNumbers(payload || {})));
+  ipcMain.handle('calling-number-options', (event) => invokeCalling(event, () => callingClient.getNumberOptions()));
+  ipcMain.handle('calling-begin-checkout', (event, payload) => invokeCalling(event, () => callingClient.beginCheckout(payload || {})));
+  ipcMain.handle('calling-get-number-request', (event, requestId) => invokeCalling(event, () => callingClient.getNumberRequest(requestId)));
+  ipcMain.handle('calling-reconcile-number', (event, requestId) => invokeCalling(event, () => callingClient.reconcileNumber(requestId)));
+  ipcMain.handle('calling-prepare-call', (event, payload) => invokeCalling(event, () => callingClient.prepareCall(payload || {})));
+  ipcMain.handle('calling-get-call', (event, callId) => invokeCalling(event, () => callingClient.getCall(callId)));
+  ipcMain.handle('calling-cancel-call', (event, callId) => invokeCalling(event, () => callingClient.cancelCall(callId)));
+  ipcMain.handle('calling-media-start', (event, payload) => invokeCalling(event, () => startCallingMedia(payload)));
+  ipcMain.handle('calling-media-trickle', (event, payload) => invokeCalling(event, () => currentCallingMedia(payload, ['candidate']).trickle(payload.candidate)));
+  ipcMain.handle('calling-media-end', (event, payload) => invokeCalling(event, () => currentCallingMedia(payload).end()));
+  ipcMain.handle('calling-media-close', (event, payload) => invokeCalling(event, () => {
+    currentCallingMedia(payload).close();
+    return { success: true };
+  }));
 
   ipcMain.on('llm-prompt', async (_e, payload) => {
     const id = payload?.id;
@@ -1182,7 +1374,16 @@ function registerIpc() {
   ipcMain.on('session-start', async (_e, payload) => {
     try {
       ensureHostedConfigured();
-      await hostedClient.sessionStart({ sessionId: payload?.sessionId, metadata: payload?.metadata || {} });
+      const sessionId = String(payload?.sessionId || '').trim();
+      if (!sessionId) throw new Error('session_id_required');
+      const generation = hostedConfigGeneration;
+      hostedSessionGenerations.set(sessionId, generation);
+      try {
+        await hostedClient.sessionStart({ sessionId, metadata: payload?.metadata || {} });
+      } catch (err) {
+        if (hostedSessionGenerations.get(sessionId) === generation) hostedSessionGenerations.delete(sessionId);
+        throw err;
+      }
     } catch (err) {
       safeSend('llm-status', { type: 'session-error', message: String(err?.message || err) });
     }
@@ -1191,8 +1392,9 @@ function registerIpc() {
   ipcMain.on('session-append-transcript', async (_e, payload) => {
     try {
       ensureHostedConfigured();
+      const sessionId = requireCurrentHostedSession(payload?.sessionId);
       await hostedClient.sessionAppendEvent({
-        sessionId: payload?.sessionId,
+        sessionId,
         type: 'transcript',
         payload: payload?.segment || {},
       });
@@ -1204,8 +1406,9 @@ function registerIpc() {
   ipcMain.on('session-append-analysis', async (_e, payload) => {
     try {
       ensureHostedConfigured();
+      const sessionId = requireCurrentHostedSession(payload?.sessionId);
       await hostedClient.sessionAppendEvent({
-        sessionId: payload?.sessionId,
+        sessionId,
         type: 'analysis',
         payload: payload?.entry || {},
       });
@@ -1217,7 +1420,11 @@ function registerIpc() {
   ipcMain.on('session-end', async (_e, payload) => {
     try {
       ensureHostedConfigured();
-      await hostedClient.sessionEnd({ sessionId: payload?.sessionId, metadata: payload?.extra || {} });
+      const sessionId = requireCurrentHostedSession(payload?.sessionId);
+      await hostedClient.sessionEnd({ sessionId, metadata: payload?.extra || {} });
+      if (hostedSessionGenerations.get(sessionId) === hostedConfigGeneration) {
+        hostedSessionGenerations.delete(sessionId);
+      }
     } catch (err) {
       safeSend('llm-status', { type: 'session-error', message: String(err?.message || err) });
     }
@@ -1259,6 +1466,7 @@ app.whenReady().then(() => {
   } catch (_) {}
 
   bootstrap();
+  announceStartupSmoke();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) bootstrap();

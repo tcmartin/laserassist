@@ -7,6 +7,10 @@ const path = require('path');
 const { normalizeConfig, HostedConfigStore } = require('../src/hosted-config');
 
 test('normalizeConfig enforces defaults and bounds', () => {
+  const defaults = normalizeConfig();
+  assert.equal(defaults.backendUrl, 'https://api.laserreach.com');
+  assert.equal(defaults.frontendUrl, 'https://laserreach.com');
+
   const cfg = normalizeConfig({
     backendUrl: 'http://127.0.0.1:8788///',
     frontendUrl: 'http://localhost:3100///',
@@ -25,7 +29,7 @@ test('HostedConfigStore persists and validates config', () => {
 
   const store = new HostedConfigStore({ settingsPath });
   let cfg = store.get();
-  assert.equal(cfg.backendUrl, 'http://127.0.0.1:8788');
+  assert.equal(cfg.backendUrl, 'https://api.laserreach.com');
 
   cfg = store.set({
     backendUrl: 'http://example.test/',
@@ -45,6 +49,8 @@ test('HostedConfigStore persists and validates config', () => {
   const reloaded = new HostedConfigStore({ settingsPath }).get();
   assert.equal(reloaded.backendUrl, 'http://example.test');
   assert.equal(reloaded.tenantId, 'orgl');
+  const settingsMode = fs.statSync(settingsPath).mode & 0o777;
+  assert.equal(settingsMode, 0o600);
 
   const validation = new HostedConfigStore({ settingsPath }).validate();
   assert.equal(validation.ok, true);

@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Laserreach Intelli Overlay</title>
+  <link rel="stylesheet" href="src/dialer-ui.css">
   <style>
     :root {
       --bg: rgba(8, 10, 14, 0.72);
@@ -325,6 +326,7 @@
         <span id="meetingPill" class="status-pill">No meeting soon</span>
         <button id="signinBtn" class="btn primary">Sign In</button>
         <button id="listenBtn" class="btn" disabled>Start</button>
+        <button id="dialerBtn" class="btn">Call</button>
         <button id="summaryBtn" class="btn" disabled>Summary</button>
         <button id="meetingBtn" class="btn" disabled>Meeting</button>
         <button id="transcriptBtn" class="btn" disabled>Transcript</button>
@@ -351,11 +353,11 @@
     <div class="settings-body">
       <div>
         <label class="label" for="backendInput">Backend URL</label>
-        <input id="backendInput" class="input" placeholder="http://127.0.0.1:8788" />
+        <input id="backendInput" class="input" placeholder="https://api.laserreach.com" />
       </div>
       <div>
         <label class="label" for="frontendInput">Frontend URL (optional)</label>
-        <input id="frontendInput" class="input" placeholder="http://localhost:3100" />
+        <input id="frontendInput" class="input" placeholder="https://laserreach.com" />
       </div>
       <div>
         <label class="label" for="tenantSelect">Workspace</label>
@@ -389,10 +391,13 @@
   </div>
 
   <div id="toast" class="toast"></div>
+  <section id="dialerWorkspace" class="dialer-shell" hidden aria-label="Call workspace"></section>
+  <script src="src/call-media.js"></script>
+  <script src="src/dialer-ui.js"></script>
 
   <script>
     const API = window.electronAPI || {
-      getHostedConfig: async () => ({ success: true, config: { backendUrl: 'http://127.0.0.1:8788', frontendUrl: 'http://localhost:3100', tenantId: '', jwtToken: '', analysisModel: 'gpt-5-mini', lookaheadMinutes: 30 } }),
+      getHostedConfig: async () => ({ success: true, config: { backendUrl: 'https://api.laserreach.com', frontendUrl: 'https://laserreach.com', tenantId: '', jwtToken: '', analysisModel: 'gpt-5-mini', lookaheadMinutes: 30 } }),
       setHostedConfig: async (config) => ({ success: true, config }),
       getHostedReminders: async () => ({ success: true, reminders: [], count: 0 }),
       authOpenLogin: async () => ({ success: false, error: 'Electron API unavailable' }),
@@ -432,6 +437,7 @@
       config: null,
       auth: null,
       listening: false,
+      callId: null,
       transcript: '',
       transcriptSegments: [],
       pendingAnalysis: new Map(),
@@ -456,6 +462,7 @@
       pinned: true,
       orgs: [],
     };
+    let dialer = null;
 
     const els = {
       headlineTitle: document.getElementById('headlineTitle'),
@@ -895,9 +902,10 @@
         analysisType,
         transcript: state.transcript,
         model: state.config.analysisModel || 'gpt-5-mini',
-        max_completion_tokens: 14000,
-        pipeline_id: state.activeReminder?.pipeline_id || state.config.defaultPipelineId || undefined,
-        event_id: state.activeReminder?.event_id || undefined,
+        max_completion_tokens: 4000,
+        callId: state.callId || undefined,
+        pipeline_id: state.callId ? undefined : state.activeReminder?.pipeline_id || state.config.defaultPipelineId || undefined,
+        event_id: state.callId ? undefined : state.activeReminder?.event_id || undefined,
       };
 
       const out = await new Promise((resolve, reject) => {
@@ -922,14 +930,14 @@
       return out;
     }
 
-    async function startListening() {
+    async function startListening({ stream: providedStream, call } = {}) {
       if (state.listening) return;
       if (!hasAuth()) {
         showToast('Sign in first.', 'error');
         return;
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({
+      const stream = providedStream || await navigator.mediaDevices.getUserMedia({
         audio: {
           channelCount: 1,
           echoCancellation: true,
@@ -956,10 +964,12 @@
       state.processor.connect(state.audioCtx.destination);
       API.asrStart({ sampleRate: state.audioCtx.sampleRate, updateMs: 700 });
 
-      const sid = `sess_${Date.now()}`;
+      state.callId = call?.call_id || null;
+      const sid = call?.session_id || `sess_${Date.now()}`;
       state.sessionId = sid;
       API.sessionStart(sid, {
         started_at: nowIso(),
+        call_id: state.callId || undefined,
         pipeline_id: state.activeReminder?.pipeline_id || '',
         event_id: state.activeReminder?.event_id || '',
       });
@@ -978,9 +988,11 @@
       }).catch(() => {});
     }
 
-    async function stopListening() {
+    async function stopListening({ endSession = true } = {}) {
       if (!state.listening) return;
       state.listening = false;
+      const sessionId = state.sessionId;
+      state.sessionId = null;
 
       try { API.asrStop(); } catch (_) {}
       try { state.processor && state.processor.disconnect(); } catch (_) {}
@@ -1005,8 +1017,8 @@
         state.autoInsightTimer = null;
       }
 
-      if (state.sessionId) {
-        API.sessionEnd(state.sessionId, {
+      if (endSession && sessionId) {
+        API.sessionEnd(sessionId, {
           ended_at: nowIso(),
           transcript_len: state.transcript.length,
         });
@@ -1021,8 +1033,8 @@
       if (!cfgRes?.success) throw new Error(cfgRes?.error || 'config_read_failed');
       state.config = cfgRes.config || {};
 
-      els.backendInput.value = state.config.backendUrl || 'http://127.0.0.1:8788';
-      els.frontendInput.value = state.config.frontendUrl || '';
+      els.backendInput.value = state.config.backendUrl || 'https://api.laserreach.com';
+      els.frontendInput.value = state.config.frontendUrl || 'https://laserreach.com';
       els.tenantInput.value = state.config.tenantId || '';
       els.modelInput.value = state.config.analysisModel || 'gpt-5-mini';
       els.lookaheadInput.value = String(state.config.lookaheadMinutes || 30);
@@ -1156,6 +1168,10 @@
     }
 
     function bindEvents() {
+      document.getElementById('dialerBtn').addEventListener('click', () => {
+        if (!hasAuth()) { showToast('Sign in to open your call workspace.', 'error'); return; }
+        dialer.run(() => dialer.toggle(true));
+      });
       els.signinBtn.addEventListener('click', async () => {
         try {
           const out = await API.authOpenLogin();
@@ -1167,6 +1183,7 @@
       });
 
       els.listenBtn.addEventListener('click', async () => {
+        if (dialer?.active) { showToast('Use End call in the call workspace.'); return; }
         try {
           if (state.listening) {
             await stopListening();
@@ -1266,7 +1283,22 @@
       els.minBtn.addEventListener('click', () => API.windowMinimize());
       els.closeBtn.addEventListener('click', () => API.windowClose());
 
-      API.onAuthUpdated(() => {
+      API.onAuthUpdated(async (msg) => {
+        if (msg?.configChanged) {
+          state.transcript = ''; state.transcriptSegments = []; state.lastTranscriptSegment = '';
+          state.callId = null; state.activeReminder = null; state.clarificationPrompts = [];
+          state.transcriptPanelLive = false; state.lastReminderAlertId = '';
+          state.autoInsightLastAnalyzedLen = 0; state.autoInsightLastRunAt = 0;
+          for (const pending of state.pendingAnalysis.values()) pending.reject(new Error('workspace_changed'));
+          state.pendingAnalysis.clear(); renderClarifyButtons();
+        }
+        if (msg?.configChanged && dialer) await dialer.reset();
+        // Main closes hosted sockets before publishing a changed identity.
+        // Stop local capture without sending a session-end event through the
+        // new tenant's channel.
+        if (msg?.configChanged && state.listening) {
+          await stopListening({ endSession: false });
+        }
         refreshConfigAndAuth().catch(() => {});
       });
       API.onQuickAsk((payload) => {
@@ -1346,6 +1378,21 @@
         refreshReminders().catch(() => {});
       }, 45000);
     }
+
+    if (API.callingGetContext) dialer = new window.DialerUI({
+      container: document.getElementById('dialerWorkspace'), api: API,
+      hooks: {
+        selection: () => ({ personId: state.activeReminder?.person_id, pipelineId: state.activeReminder?.pipeline_id, eventId: state.activeReminder?.event_id }),
+        listen: async (stream, call) => {
+          await stopListening();
+          state.transcript = ''; state.transcriptSegments = [];
+          state.activeReminder = { pipeline_id: call.context.pipeline_id, event_id: call.context.event_id, person_id: call.context.person_id,
+            person_name: call.context.person?.full_name, company_name: call.context.company?.name };
+          await startListening({ stream, call });
+        },
+        stop: (options) => stopListening(options),
+      },
+    });
 
     boot().catch((err) => {
       showToast(err.message || String(err), 'error', 5000);
