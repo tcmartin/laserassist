@@ -1,5 +1,13 @@
 # Intelli dialer interface
 
+Validated source commit: `3a0f9a274a0b436afcf6a1322b6101f81e4ca290`, tree
+`1eee58436d52e9d91b14c18358b191a4c67ed953`. The feature branch and canonical
+remote `master` were pushed and fetched; this source is reachable from both.
+The previously local baseline `78915dc` and diagnostic `b7ed68f` are included
+in this tested tree. The clean retained primary `master` checkout was advanced
+with a fast-forward. GitHub Actions returned no runs for this exact commit;
+the repository contains no checked-in workflow, so no CI pass is claimed.
+
 The existing compact bar expands into a call console within the same trusted
 local window. This reuses the existing transcript, coaching, authentication
 and session runtime. It avoids separate windows competing for microphone and
