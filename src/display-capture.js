@@ -9,14 +9,16 @@ function installDisplayCapture({ session, desktopCapturer, getBarWindow, indexPa
       && request.frame === win.webContents.mainFrame
       && request.frame?.url === trustedUrl
       && request.userGesture && request.audioRequested;
-    if (!isTrusted()) { callback({}); return; }
+    if (!isTrusted()) { callback(null); return; }
+    let sources;
     try {
-      const sources = await desktopCapturer.getSources({
+      sources = await desktopCapturer.getSources({
         types: ['screen'], thumbnailSize: { width: 0, height: 0 },
       });
-      if (!isTrusted() || !sources.length) { callback({}); return; }
-      callback({ video: sources[0], audio: 'loopback' });
-    } catch (_) { callback({}); }
+    } catch (_) { callback(null); return; }
+    if (!isTrusted() || !sources.length) { callback(null); return; }
+    // Electron consumes this callback even when delivery throws. Never retry it.
+    callback({ video: sources[0], audio: 'loopback' });
   });
 }
 

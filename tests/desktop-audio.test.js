@@ -107,17 +107,55 @@ test('display handler authorizes only user-initiated trusted bar capture and rec
     getBarWindow: () => current, indexPath: '/app/index.html',
   });
   const invoke = (value) => new Promise((resolve) => { handler(value, resolve); });
-  assert.deepEqual(await invoke({ ...request, userGesture: false }), {});
-  assert.deepEqual(await invoke({ ...request, frame: { url: frame.url } }), {});
-  assert.deepEqual(await invoke({ ...request, audioRequested: false }), {});
+  assert.deepEqual(await invoke({ ...request, userGesture: false }), null);
+  assert.deepEqual(await invoke({ ...request, frame: { url: frame.url } }), null);
+  assert.deepEqual(await invoke({ ...request, audioRequested: false }), null);
   assert.equal(lookups, 0);
   assert.deepEqual(await invoke(request), { video: sources[0], audio: 'loopback' });
   const pending = invoke(request); current = null;
-  assert.deepEqual(await pending, {});
+  assert.deepEqual(await pending, null);
 });
 
 test('capture settings default to both inputs and preserve explicit microphone mode', () => {
   assert.equal(normalizeConfig().audioCaptureMode, 'microphone_system');
   assert.equal(normalizeConfig({ audioCaptureMode: 'microphone' }).audioCaptureMode, 'microphone');
   assert.equal(normalizeConfig({ audioCaptureMode: 'invalid' }).audioCaptureMode, 'microphone_system');
+});
+
+for (const failure of ['empty', 'lookup-error']) {
+  test(`display capture denies ${failure} with Electron's null response once`, async () => {
+    const frame = { url: 'file:///app/index.html' };
+    const win = { isDestroyed: () => false, webContents: { mainFrame: frame } };
+    let handler; const responses = [];
+    installDisplayCapture({
+      session: { setDisplayMediaRequestHandler(fn) { handler = fn; } },
+      desktopCapturer: { async getSources() {
+        if (failure === 'lookup-error') throw new Error('Capture unavailable');
+        return [];
+      } },
+      getBarWindow: () => win, indexPath: '/app/index.html',
+    });
+    await handler({ frame, userGesture: true, audioRequested: true }, (streams) => {
+      responses.push(streams);
+      // Electron44 rejects an empty object as invalid capture constraints.
+      assert.equal(streams, null);
+    });
+    assert.deepEqual(responses, [null]);
+  });
+}
+
+test('display capture never retries a consumed callback after a delivery error', async () => {
+  const frame = { url: 'file:///app/index.html' };
+  const win = { isDestroyed: () => false, webContents: { mainFrame: frame } };
+  let handler; let calls = 0;
+  installDisplayCapture({
+    session: { setDisplayMediaRequestHandler(fn) { handler = fn; } },
+    desktopCapturer: { async getSources() { return [{ id: 'screen:1' }]; } },
+    getBarWindow: () => win, indexPath: '/app/index.html',
+  });
+  await assert.rejects(handler({ frame, userGesture: true, audioRequested: true }, () => {
+    calls += 1;
+    throw new Error('Frame destroyed during delivery');
+  }), /Frame destroyed/);
+  assert.equal(calls, 1);
 });
