@@ -72,11 +72,21 @@
       "!summary-generator.js",
       "!suggestion-generator.js",
       "!transcript-buffer.js",
-      "!Transformers.js"
+      "!Transformers.js",
+      "!src/call-media.js",
+      "!src/call-signaling.js",
+      "!src/calling-client.js",
+      "!src/dialer-ui.js",
+      "!src/dialer-ui.css"
     ],
     "mac": {
       "icon": "app-icon.icns",
-      "category": "public.app-category.productivity"
+      "category": "public.app-category.productivity",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Intelli uses your microphone for live transcription and coaching.",
+        "NSAudioCaptureUsageDescription": "Intelli uses system audio for live transcription and coaching during conversations.",
+        "NSScreenCaptureUsageDescription": "Intelli captures system audio while you use live coaching."
+      }
     },
     "win": {
       "target": [
@@ -104,7 +114,7 @@
     "ws": "^8.19.0"
   },
   "devDependencies": {
-    "electron": "^26.0.0",
+    "electron": "44.4.3",
     "electron-builder": "^24.13.3"
   }
 }

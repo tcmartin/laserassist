@@ -1,22 +1,20 @@
-const { app, BrowserWindow, ipcMain, globalShortcut, shell, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, globalShortcut, shell, screen, desktopCapturer } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { fileURLToPath } = require('url');
+const { installDisplayCapture } = require('./src/display-capture');
 
 const { DEFAULT_HOSTED_CONFIG, normalizeConfig, HostedConfigStore } = require('./src/hosted-config');
 const { HostedApiClient } = require('./src/hosted-client');
 const { HostedAudioTranscriber } = require('./src/hosted-audio');
-const { CallingClient } = require('./src/calling-client');
-const { CallSignaling } = require('./src/call-signaling');
 
 let barWindow = null;
 let authWindow = null;
 let hostedConfigStore = null;
 let hostedClient = null;
-let callingClient = null;
-let callSignaling = null;
 let audioTranscriber = null;
 let isPinned = true;
+let settingsExpanded = false;
+let compactBarHeight = 108;
 let panelCounter = 0;
 const panelWindows = new Map();
 const meetingAlertedIds = new Set();
@@ -74,10 +72,6 @@ function createHostedRuntime() {
     },
     onAsrMessage: (msg) => safeSend('asr-message', msg),
   });
-  callingClient = new CallingClient({
-    transport: hostedClient,
-    getConfig: () => hostedConfigStore.get(),
-  });
   audioTranscriber = new HostedAudioTranscriber({
     startStreamFn: (opts) => hostedClient.startAsrStream(opts),
     sendPcmChunkFn: (pcmBuffer) => hostedClient.sendAsrPcmChunk(pcmBuffer),
@@ -120,6 +114,10 @@ function createBarWindow() {
     barWindow.setAlwaysOnTop(isPinned);
   }
 
+  installDisplayCapture({
+    session: barWindow.webContents.session, desktopCapturer,
+    getBarWindow: () => barWindow, indexPath: path.join(__dirname, 'index.html'),
+  });
   barWindow.loadFile('index.html');
   barWindow.once('ready-to-show', () => {
     safeSend('model-status', {
@@ -187,7 +185,6 @@ function hostedIdentityChanged(current, next) {
 }
 
 async function resetHostedConnections() {
-  if (callSignaling) callSignaling.close();
   // Finish the old stream before changing credentials or tenant. This keeps
   // the final audio/session messages on the old authenticated channel.
   if (audioTranscriber) await audioTranscriber.stop();
@@ -929,78 +926,7 @@ function closePanel(key) {
   return { success: true };
 }
 
-function isTrustedCallingSender(event, trustedBar = barWindow) {
-  const sender = event && event.sender;
-  const frame = event && event.senderFrame;
-  if (!sender || !frame || frame !== sender.mainFrame) return false;
-  if (!trustedBar || trustedBar.isDestroyed() || sender !== trustedBar.webContents) return false;
-  try {
-    const parsed = new URL(String(frame.url || ''));
-    if (parsed.protocol !== 'file:' || parsed.search || parsed.hash) return false;
-    return path.resolve(fileURLToPath(parsed)) === path.resolve(path.join(__dirname, 'index.html'));
-  } catch (_) {
-    return false;
-  }
-}
-
-function callingFailure(error) {
-  const message = String(error?.message || 'calling_request_failed');
-  const safe = /^(calling_[a-z0-9_]+|call_signaling_[a-z0-9_]+|HTTP \d{3})$/.test(message) ? message : 'calling_request_failed';
-  return { success: false, error: safe };
-}
-
-async function invokeCalling(event, operation) {
-  if (!isTrustedCallingSender(event)) return { success: false, error: 'calling_untrusted_sender' };
-  try {
-    return await operation();
-  } catch (error) {
-    return callingFailure(error);
-  }
-}
-
-function mediaPayload(payload, extra) {
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)
-    || Object.keys(payload).some((key) => !['callId', ...extra].includes(key))
-    || !/^call_[0-9a-f]{64}$/.test(payload.callId || '')
-    || Buffer.byteLength(JSON.stringify(payload)) > 160 * 1024) {
-    throw new Error('calling_invalid_media_request');
-  }
-  return payload;
-}
-
-async function startCallingMedia(payload) {
-  mediaPayload(payload, ['offer']);
-  if (!payload.offer || payload.offer.type !== 'offer' || typeof payload.offer.sdp !== 'string'
-    || !payload.offer.sdp || Buffer.byteLength(payload.offer.sdp) > 128 * 1024
-    || Object.keys(payload.offer).some((key) => !['type', 'sdp'].includes(key))) {
-    throw new Error('calling_invalid_offer');
-  }
-  ensureHostedConfigured();
-  if (callSignaling && !callSignaling.closed) throw new Error('calling_call_in_progress');
-  const client = new CallSignaling({
-    callId: payload.callId,
-    getConfig: () => hostedConfigStore.get(),
-    onUpdate: (update) => safeSend('calling-media-update', update),
-    onClose: (state) => {
-      if (callSignaling === client) callSignaling = null;
-      safeSend('calling-media-closed', state);
-    },
-  });
-  // Reserve the active call synchronously before the first connection await.
-  callSignaling = client;
-  return client.start(payload.offer);
-}
-
-function currentCallingMedia(payload, extra = []) {
-  mediaPayload(payload, extra);
-  if (!callSignaling || callSignaling.callId !== payload.callId || callSignaling.closed) {
-    throw new Error('calling_media_not_connected');
-  }
-  return callSignaling;
-}
-
 function cleanup() {
-  if (callSignaling) callSignaling.close();
   try {
     globalShortcut.unregisterAll();
   } catch (_) {}
@@ -1033,21 +959,35 @@ async function handleAnalyzeRequest(payload, fallbackType = 'full') {
   const transcriptContext = String(payload?.transcriptContext || '').trim();
   const transcript = String(payload?.transcript || transcriptContext || prompt).trim();
   if (!transcript) throw new Error('Transcript is required for analysis');
-  const callId = payload?.callId || payload?.call_id || undefined;
-
   return hostedClient.analyze({
     transcript,
     prompt,
     analysisType: payload?.analysisType || payload?.analysis_type || fallbackType,
     maxCompletionTokens: payload?.maxCompletionTokens || payload?.max_completion_tokens || 4000,
-    pipelineId: payload?.pipelineId || payload?.pipeline_id || (!callId && cfg.defaultPipelineId) || undefined,
+    pipelineId: payload?.pipelineId || payload?.pipeline_id || cfg.defaultPipelineId || undefined,
     eventId: payload?.eventId || payload?.event_id || undefined,
-    callId,
     model: payload?.model || cfg.analysisModel || 'gpt-5-mini',
   });
 }
 
 function registerIpc() {
+  ipcMain.handle('window-settings-open', (event, expanded) => {
+    if (typeof expanded !== 'boolean' || !barWindow || barWindow.isDestroyed()
+        || event.sender !== barWindow.webContents
+        || event.senderFrame !== barWindow.webContents.mainFrame) {
+      return { success: false, error: 'settings_window_unavailable' };
+    }
+    if (settingsExpanded === expanded) return { success: true };
+    const bounds = barWindow.getBounds();
+    const area = screen.getDisplayMatching(bounds).workArea;
+    if (expanded) compactBarHeight = Math.min(bounds.height, 220);
+    const height = expanded ? Math.min(760, area.height) : compactBarHeight;
+    barWindow.setMaximumSize(10000, expanded ? Math.max(220, height) : 220);
+    barWindow.setBounds({ ...bounds, height, y: Math.max(area.y, Math.min(bounds.y, area.y + area.height - height)) });
+    settingsExpanded = expanded;
+    return { success: true };
+  });
+
   ipcMain.handle('window-minimize', () => {
     if (barWindow && !barWindow.isDestroyed()) barWindow.minimize();
     return { success: true };
@@ -1265,37 +1205,6 @@ function registerIpc() {
       return { success: false, error: String(err?.message || err), reminders: [], count: 0 };
     }
   });
-
-  ipcMain.handle('calling-get-context', (event, payload) => invokeCalling(event, () => callingClient.getContext(payload || {})));
-  ipcMain.handle('calling-search-people', (event, payload) => invokeCalling(event, () => callingClient.searchPeople(payload || {})));
-  ipcMain.handle('calling-set-expanded', (event, expanded) => invokeCalling(event, () => {
-    if (typeof expanded !== 'boolean') throw new Error('calling_invalid_request');
-    const area = screen.getDisplayMatching(barWindow.getBounds()).workArea;
-    barWindow.setMaximumSize(1800, expanded ? Math.min(900, area.height) : 220);
-    barWindow.setSize(Math.min(1120, area.width), expanded ? Math.min(800, area.height - 24) : 108);
-    if (expanded) barWindow.setPosition(Math.max(area.x, Math.min(barWindow.getBounds().x, area.x + area.width - barWindow.getBounds().width)), area.y + 12);
-    return { success: true };
-  }));
-  ipcMain.handle('calling-list-scripts', (event, payload) => invokeCalling(event, () => callingClient.listScripts(payload || {})));
-  ipcMain.handle('calling-get-script', (event, templateId, payload) => invokeCalling(event, () => callingClient.getScript(templateId, payload || {})));
-  ipcMain.handle('calling-create-script', (event, payload) => invokeCalling(event, () => callingClient.createScript(payload || {})));
-  ipcMain.handle('calling-update-script', (event, templateId, payload) => invokeCalling(event, () => callingClient.updateScript(templateId, payload || {})));
-  ipcMain.handle('calling-archive-script', (event, templateId, payload) => invokeCalling(event, () => callingClient.archiveScript(templateId, payload || {})));
-  ipcMain.handle('calling-list-numbers', (event, payload) => invokeCalling(event, () => callingClient.listNumbers(payload || {})));
-  ipcMain.handle('calling-number-options', (event) => invokeCalling(event, () => callingClient.getNumberOptions()));
-  ipcMain.handle('calling-begin-checkout', (event, payload) => invokeCalling(event, () => callingClient.beginCheckout(payload || {})));
-  ipcMain.handle('calling-get-number-request', (event, requestId) => invokeCalling(event, () => callingClient.getNumberRequest(requestId)));
-  ipcMain.handle('calling-reconcile-number', (event, requestId) => invokeCalling(event, () => callingClient.reconcileNumber(requestId)));
-  ipcMain.handle('calling-prepare-call', (event, payload) => invokeCalling(event, () => callingClient.prepareCall(payload || {})));
-  ipcMain.handle('calling-get-call', (event, callId) => invokeCalling(event, () => callingClient.getCall(callId)));
-  ipcMain.handle('calling-cancel-call', (event, callId) => invokeCalling(event, () => callingClient.cancelCall(callId)));
-  ipcMain.handle('calling-media-start', (event, payload) => invokeCalling(event, () => startCallingMedia(payload)));
-  ipcMain.handle('calling-media-trickle', (event, payload) => invokeCalling(event, () => currentCallingMedia(payload, ['candidate']).trickle(payload.candidate)));
-  ipcMain.handle('calling-media-end', (event, payload) => invokeCalling(event, () => currentCallingMedia(payload).end()));
-  ipcMain.handle('calling-media-close', (event, payload) => invokeCalling(event, () => {
-    currentCallingMedia(payload).close();
-    return { success: true };
-  }));
 
   ipcMain.on('llm-prompt', async (_e, payload) => {
     const id = payload?.id;

@@ -9,6 +9,7 @@ const DEFAULT_HOSTED_CONFIG = Object.freeze({
   analysisModel: 'gpt-5-mini',
   lookaheadMinutes: 30,
   defaultPipelineId: '',
+  audioCaptureMode: 'microphone_system',
 });
 
 function normalizeConfig(input = {}) {
@@ -24,6 +25,7 @@ function normalizeConfig(input = {}) {
     jwtToken: String(input.jwtToken || '').trim(),
     analysisModel: String(input.analysisModel || DEFAULT_HOSTED_CONFIG.analysisModel).trim() || DEFAULT_HOSTED_CONFIG.analysisModel,
     lookaheadMinutes,
+    audioCaptureMode: input.audioCaptureMode === 'microphone' ? 'microphone' : 'microphone_system',
     defaultPipelineId: String(input.defaultPipelineId || '').trim(),
   };
 }

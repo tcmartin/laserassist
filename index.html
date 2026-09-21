@@ -4,7 +4,6 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Laserreach Intelli Overlay</title>
-  <link rel="stylesheet" href="src/dialer-ui.css">
   <style>
     :root {
       --bg: rgba(8, 10, 14, 0.72);
@@ -238,7 +237,9 @@
       overflow: hidden;
     }
 
-    .settings.show { display: block; }
+    .settings.show { display: block; max-height: calc(100vh - 82px); overflow-y: auto; }
+    .settings .input { width: 100%; min-width: 0; }
+    .settings .row > div { min-width: 0; }
 
     .settings-header {
       display: flex;
@@ -318,7 +319,7 @@
         <img src="assets/laserreach-logo.png" alt="Laserreach" class="logo" />
         <div class="headline">
           <div id="headlineTitle" class="headline-title">Laserreach Intelli</div>
-          <div id="headlineSub" class="headline-sub">Sign in to start live call intelligence.</div>
+          <div id="headlineSub" class="headline-sub">Sign in to start live audio intelligence.</div>
         </div>
       </div>
 
@@ -326,7 +327,6 @@
         <span id="meetingPill" class="status-pill">No meeting soon</span>
         <button id="signinBtn" class="btn primary">Sign In</button>
         <button id="listenBtn" class="btn" disabled>Start</button>
-        <button id="dialerBtn" class="btn">Call</button>
         <button id="summaryBtn" class="btn" disabled>Summary</button>
         <button id="meetingBtn" class="btn" disabled>Meeting</button>
         <button id="transcriptBtn" class="btn" disabled>Transcript</button>
@@ -381,6 +381,13 @@
           <input id="lookaheadInput" class="input" value="30" />
         </div>
       </div>
+      <div>
+        <label class="label" for="audioCaptureSelect">Audio source</label>
+        <select id="audioCaptureSelect" class="input">
+          <option value="microphone_system">Microphone and system audio</option>
+          <option value="microphone">Microphone only</option>
+        </select>
+      </div>
       <div class="small" id="authSummary">Not signed in.</div>
       <div class="row">
         <button id="saveSettingsBtn" class="btn primary">Save</button>
@@ -391,10 +398,7 @@
   </div>
 
   <div id="toast" class="toast"></div>
-  <section id="dialerWorkspace" class="dialer-shell" hidden aria-label="Call workspace"></section>
-  <script src="src/call-media.js"></script>
-  <script src="src/dialer-ui.js"></script>
-
+  <script src="src/desktop-audio.js"></script>
   <script>
     const API = window.electronAPI || {
       getHostedConfig: async () => ({ success: true, config: { backendUrl: 'https://api.laserreach.com', frontendUrl: 'https://laserreach.com', tenantId: '', jwtToken: '', analysisModel: 'gpt-5-mini', lookaheadMinutes: 30 } }),
@@ -414,6 +418,7 @@
       windowMinimize: async () => ({ success: true }),
       windowClose: async () => ({ success: true }),
       windowTogglePin: async () => ({ success: true, pinned: true }),
+      windowSetSettingsOpen: async () => ({ success: true }),
       sendPrompt: () => {},
       onResponse: () => {},
       sendAnalysisRequest: () => {},
@@ -437,12 +442,13 @@
       config: null,
       auth: null,
       listening: false,
-      callId: null,
       transcript: '',
       transcriptSegments: [],
       pendingAnalysis: new Map(),
       pendingPrompt: new Map(),
       mediaStream: null,
+      audioCapture: null,
+      starting: false,
       audioCtx: null,
       sourceNode: null,
       processor: null,
@@ -462,8 +468,6 @@
       pinned: true,
       orgs: [],
     };
-    let dialer = null;
-
     const els = {
       headlineTitle: document.getElementById('headlineTitle'),
       headlineSub: document.getElementById('headlineSub'),
@@ -491,6 +495,7 @@
       tenantInput: document.getElementById('tenantInput'),
       modelInput: document.getElementById('modelInput'),
       lookaheadInput: document.getElementById('lookaheadInput'),
+      audioCaptureSelect: document.getElementById('audioCaptureSelect'),
       authSummary: document.getElementById('authSummary'),
       saveSettingsBtn: document.getElementById('saveSettingsBtn'),
       reauthBtn: document.getElementById('reauthBtn'),
@@ -575,14 +580,15 @@
 
     function updateButtons() {
       const ready = hasAuth();
-      els.listenBtn.disabled = !ready;
+      els.listenBtn.disabled = !ready || state.starting;
+      els.audioCaptureSelect.disabled = state.listening || state.starting;
       els.summaryBtn.disabled = !ready;
       els.meetingBtn.disabled = !ready;
       els.transcriptBtn.disabled = !ready;
       els.signinBtn.textContent = ready ? 'Signed In' : 'Sign In';
       els.signinBtn.classList.toggle('ok', ready);
       els.listenBtn.classList.toggle('ok', state.listening);
-      els.listenBtn.textContent = state.listening ? 'Stop' : 'Start';
+      els.listenBtn.textContent = state.starting ? 'Starting…' : state.listening ? 'Stop' : 'Start';
       els.pinBtn.textContent = state.pinned ? '📌' : '📍';
     }
 
@@ -850,7 +856,7 @@
       renderClarifyButtons();
       const liveMode = Boolean(opts.live);
       const suffix = liveMode ? 'live' : 'manual';
-      const subtitle = state.activeReminder?.person_name || state.activeReminder?.person_email || 'Live call';
+      const subtitle = state.activeReminder?.person_name || state.activeReminder?.person_email || 'Live audio';
       const sections = [
         `Summary:\n${summary}`,
         section('Pain points', painPoints.map((p) => [p.pain, p.inference, p.evidence ? `Evidence: ${p.evidence}` : ''].filter(Boolean).join(' — '))),
@@ -903,9 +909,8 @@
         transcript: state.transcript,
         model: state.config.analysisModel || 'gpt-5-mini',
         max_completion_tokens: 4000,
-        callId: state.callId || undefined,
-        pipeline_id: state.callId ? undefined : state.activeReminder?.pipeline_id || state.config.defaultPipelineId || undefined,
-        event_id: state.callId ? undefined : state.activeReminder?.event_id || undefined,
+        pipeline_id: state.activeReminder?.pipeline_id || state.config.defaultPipelineId || undefined,
+        event_id: state.activeReminder?.event_id || undefined,
       };
 
       const out = await new Promise((resolve, reject) => {
@@ -914,6 +919,7 @@
           reject(new Error('analysis_timeout'));
         }, 90000);
         state.pendingAnalysis.set(id, {
+          sessionId: state.sessionId,
           resolve: (v) => {
             clearTimeout(timer);
             resolve(v);
@@ -930,27 +936,48 @@
       return out;
     }
 
-    async function startListening({ stream: providedStream, call } = {}) {
-      if (state.listening) return;
+    async function startListening() {
+      if (state.listening || state.starting) return;
       if (!hasAuth()) {
         showToast('Sign in first.', 'error');
         return;
       }
 
-      const stream = providedStream || await navigator.mediaDevices.getUserMedia({
-        audio: {
-          channelCount: 1,
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
+      state.starting = true;
+      updateButtons();
+      const capture = new DesktopAudioCapture({
+        onEnded: () => {
+          stopListening().catch(() => {});
+          showToast('Audio capture ended.', 'error');
         },
       });
+      state.audioCapture = capture;
+      let stream;
+      try {
+        stream = await capture.start(state.config?.audioCaptureMode || 'microphone_system');
+        if (state.audioCapture !== capture || !hasAuth()) {
+          await capture.close();
+          return;
+        }
+      } catch (error) {
+        if (state.audioCapture === capture) state.audioCapture = null;
+        await capture.close();
+        throw error;
+      } finally {
+        state.starting = false;
+        updateButtons();
+      }
 
       state.mediaStream = stream;
       state.audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
       state.sourceNode = state.audioCtx.createMediaStreamSource(stream);
       state.processor = state.audioCtx.createScriptProcessor(4096, 1, 1);
+      state.transcript = '';
+      state.transcriptSegments = [];
+      state.clarificationPrompts = [];
+      renderClarifyButtons();
       state.lastTranscriptSegment = '';
+      state.autoInsightInFlight = false;
       state.autoInsightLastAnalyzedLen = 0;
       state.autoInsightLastRunAt = 0;
 
@@ -964,23 +991,21 @@
       state.processor.connect(state.audioCtx.destination);
       API.asrStart({ sampleRate: state.audioCtx.sampleRate, updateMs: 700 });
 
-      state.callId = call?.call_id || null;
-      const sid = call?.session_id || `sess_${Date.now()}`;
+      const sid = `sess_${Date.now()}`;
       state.sessionId = sid;
       API.sessionStart(sid, {
         started_at: nowIso(),
-        call_id: state.callId || undefined,
         pipeline_id: state.activeReminder?.pipeline_id || '',
         event_id: state.activeReminder?.event_id || '',
       });
 
       state.listening = true;
-      setHeadline('Listening live', state.activeReminder ? `${state.activeReminder.person_name || state.activeReminder.person_email || 'Contact'} • ${state.activeReminder.company_name || 'Account'}` : 'Capturing live call audio');
+      setHeadline('Listening live', state.activeReminder ? `${state.activeReminder.person_name || state.activeReminder.person_email || 'Contact'} • ${state.activeReminder.company_name || 'Account'}` : (state.config?.audioCaptureMode === 'microphone' ? 'Capturing microphone audio' : 'Capturing microphone and system audio'));
       updateButtons();
       openPanel({
         key: 'ai_coach_live',
         title: 'AI coach (live)',
-        subtitle: state.activeReminder?.person_name || state.activeReminder?.person_email || 'Live call',
+        subtitle: state.activeReminder?.person_name || state.activeReminder?.person_email || 'Live audio',
         content: 'Listening now. Live suggestions will appear as transcript arrives.',
         chips: ['ai coach', 'warming up'],
         width: 520,
@@ -989,12 +1014,16 @@
     }
 
     async function stopListening({ endSession = true } = {}) {
-      if (!state.listening) return;
+      if (!state.listening && !state.audioCapture) return;
+      const wasListening = state.listening;
       state.listening = false;
+      const capture = state.audioCapture;
+      state.audioCapture = null;
+      if (capture) await capture.close();
       const sessionId = state.sessionId;
       state.sessionId = null;
 
-      try { API.asrStop(); } catch (_) {}
+      try { if (wasListening) API.asrStop(); } catch (_) {}
       try { state.processor && state.processor.disconnect(); } catch (_) {}
       try { state.sourceNode && state.sourceNode.disconnect(); } catch (_) {}
       try { state.audioCtx && state.audioCtx.close(); } catch (_) {}
@@ -1038,6 +1067,7 @@
       els.tenantInput.value = state.config.tenantId || '';
       els.modelInput.value = state.config.analysisModel || 'gpt-5-mini';
       els.lookaheadInput.value = String(state.config.lookaheadMinutes || 30);
+      els.audioCaptureSelect.value = state.config.audioCaptureMode || 'microphone_system';
 
       const authRes = await API.authStatus();
       state.auth = authRes || { authenticated: false };
@@ -1064,7 +1094,7 @@
         const user = state.auth.user || {};
         setHeadline('Laserreach Intelli', `${user.username || user.email || 'Signed in'}${state.config.tenantId ? ` • ${state.config.tenantId}` : ''}`);
       } else {
-        setHeadline('Laserreach Intelli', 'Sign in to start live call intelligence.');
+        setHeadline('Laserreach Intelli', 'Sign in to start your live assistant.');
       }
     }
 
@@ -1079,6 +1109,7 @@
         tenantId: chosenTenant,
         analysisModel: els.modelInput.value.trim() || 'gpt-5-mini',
         lookaheadMinutes: Number(els.lookaheadInput.value || 30),
+        audioCaptureMode: els.audioCaptureSelect.value,
       };
       const res = await API.setHostedConfig(next);
       if (!res?.success) throw new Error(res?.error || 'save_failed');
@@ -1146,14 +1177,16 @@
 
       state.autoInsightInFlight = true;
       state.autoInsightLastRunAt = Date.now();
+      const sessionId = state.sessionId;
       try {
         const result = await runAnalysis(autoInsightPrompt(), 'full');
+        if (!state.listening || state.sessionId !== sessionId) return;
         state.autoInsightLastAnalyzedLen = transcriptLen;
         await openAnalysisPanels(result, { live: true });
       } catch (_) {
         // Keep silent during auto mode to avoid noisy toasts while call is active.
       } finally {
-        state.autoInsightInFlight = false;
+        if (state.sessionId === sessionId) state.autoInsightInFlight = false;
       }
     }
 
@@ -1168,10 +1201,6 @@
     }
 
     function bindEvents() {
-      document.getElementById('dialerBtn').addEventListener('click', () => {
-        if (!hasAuth()) { showToast('Sign in to open your call workspace.', 'error'); return; }
-        dialer.run(() => dialer.toggle(true));
-      });
       els.signinBtn.addEventListener('click', async () => {
         try {
           const out = await API.authOpenLogin();
@@ -1183,7 +1212,6 @@
       });
 
       els.listenBtn.addEventListener('click', async () => {
-        if (dialer?.active) { showToast('Use End call in the call workspace.'); return; }
         try {
           if (state.listening) {
             await stopListening();
@@ -1240,11 +1268,14 @@
         saveSettings().catch((err) => showToast(err.message || String(err), 'error'));
       });
 
-      els.settingsBtn.addEventListener('click', () => {
-        els.settingsPanel.classList.toggle('show');
+      els.settingsBtn.addEventListener('click', async () => {
+        const expanded = !els.settingsPanel.classList.contains('show');
+        const result = await API.windowSetSettingsOpen(expanded);
+        if (result?.success) els.settingsPanel.classList.toggle('show', expanded);
       });
-      els.settingsCloseBtn.addEventListener('click', () => {
+      els.settingsCloseBtn.addEventListener('click', async () => {
         els.settingsPanel.classList.remove('show');
+        await API.windowSetSettingsOpen(false);
       });
       els.saveSettingsBtn.addEventListener('click', () => {
         saveSettings().catch((err) => showToast(err.message || String(err), 'error'));
@@ -1286,17 +1317,16 @@
       API.onAuthUpdated(async (msg) => {
         if (msg?.configChanged) {
           state.transcript = ''; state.transcriptSegments = []; state.lastTranscriptSegment = '';
-          state.callId = null; state.activeReminder = null; state.clarificationPrompts = [];
+          state.activeReminder = null; state.clarificationPrompts = [];
           state.transcriptPanelLive = false; state.lastReminderAlertId = '';
           state.autoInsightLastAnalyzedLen = 0; state.autoInsightLastRunAt = 0;
           for (const pending of state.pendingAnalysis.values()) pending.reject(new Error('workspace_changed'));
           state.pendingAnalysis.clear(); renderClarifyButtons();
         }
-        if (msg?.configChanged && dialer) await dialer.reset();
         // Main closes hosted sockets before publishing a changed identity.
         // Stop local capture without sending a session-end event through the
         // new tenant's channel.
-        if (msg?.configChanged && state.listening) {
+        if (msg?.configChanged && (state.listening || state.audioCapture)) {
           await stopListening({ endSession: false });
         }
         refreshConfigAndAuth().catch(() => {});
@@ -1339,7 +1369,7 @@
         if (data.error) {
           pending.reject(new Error(data.error));
         } else {
-          if (state.sessionId && data.results) {
+          if (state.listening && pending.sessionId && pending.sessionId === state.sessionId && data.results) {
             API.sessionAppendAnalysis(state.sessionId, { ts: nowIso(), results: data.results });
           }
           pending.resolve(data);
@@ -1378,21 +1408,6 @@
         refreshReminders().catch(() => {});
       }, 45000);
     }
-
-    if (API.callingGetContext) dialer = new window.DialerUI({
-      container: document.getElementById('dialerWorkspace'), api: API,
-      hooks: {
-        selection: () => ({ personId: state.activeReminder?.person_id, pipelineId: state.activeReminder?.pipeline_id, eventId: state.activeReminder?.event_id }),
-        listen: async (stream, call) => {
-          await stopListening();
-          state.transcript = ''; state.transcriptSegments = [];
-          state.activeReminder = { pipeline_id: call.context.pipeline_id, event_id: call.context.event_id, person_id: call.context.person_id,
-            person_name: call.context.person?.full_name, company_name: call.context.company?.name };
-          await startListening({ stream, call });
-        },
-        stop: (options) => stopListening(options),
-      },
-    });
 
     boot().catch((err) => {
       showToast(err.message || String(err), 'error', 5000);

@@ -2,27 +2,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const vm = require('node:vm');
-const { URL, fileURLToPath, pathToFileURL } = require('node:url');
 
 const { CallingClient } = require('../src/calling-client');
-
-function loadCallingTrustGuard() {
-  const mainPath = path.join(__dirname, '..', 'main.js');
-  const source = fs.readFileSync(mainPath, 'utf8');
-  const start = source.indexOf('function isTrustedCallingSender');
-  const end = source.indexOf('\n}\n\nfunction callingFailure', start) + 2;
-  assert.ok(start >= 0 && end > start, 'calling trust guard should remain a standalone function');
-  return vm.runInNewContext(`(${source.slice(start, end)})`, {
-    URL, fileURLToPath, path, __dirname: path.dirname(mainPath),
-  });
-}
-
-function fakeWindow(url) {
-  const mainFrame = { url };
-  const webContents = { mainFrame };
-  return { webContents, isDestroyed: () => false };
-}
 
 function setup() {
   const cfg = { backendUrl: 'https://api.example.test', tenantId: 'org_1', jwtToken: 'jwt_1' };
@@ -79,25 +60,9 @@ test('calling client rejects unknown fields, unconfirmed checkout, and unsafe id
   assert.equal(calls.length, 0);
 });
 
-test('calling IPC trusts only the bar index file main frame', () => {
-  const guard = loadCallingTrustGuard();
-  const localUrl = pathToFileURL(path.join(__dirname, '..', 'index.html')).href;
-  const trustedBar = fakeWindow(localUrl);
-  const trustedEvent = { sender: trustedBar.webContents, senderFrame: trustedBar.webContents.mainFrame };
-  assert.equal(guard(trustedEvent, trustedBar), true);
-
-  const foreign = fakeWindow(localUrl);
-  assert.equal(guard({ sender: foreign.webContents, senderFrame: foreign.webContents.mainFrame }, trustedBar), false);
-
-  const authWindow = fakeWindow(pathToFileURL(path.join(__dirname, '..', 'auth.html')).href);
-  assert.equal(guard({ sender: authWindow.webContents, senderFrame: authWindow.webContents.mainFrame }, trustedBar), false);
-
-  assert.equal(guard({ sender: trustedBar.webContents, senderFrame: { url: localUrl } }, trustedBar), false);
-
-  const remoteFrame = { url: 'https://evil.example.test/index.html' };
-  assert.equal(guard({ sender: trustedBar.webContents, senderFrame: remoteFrame }, trustedBar), false);
-  const unexpectedLocalFrame = { url: `${localUrl}?unexpected=1` };
-  assert.equal(guard({ sender: trustedBar.webContents, senderFrame: unexpectedLocalFrame }, trustedBar), false);
+test('standalone main does not register calling IPC trust guards', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
+  assert.doesNotMatch(source, /isTrustedCallingSender|callingFailure|invokeCalling/);
 });
 
 test('calling mutations reject oversized serialized bodies before transport', async () => {

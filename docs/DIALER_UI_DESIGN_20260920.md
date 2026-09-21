@@ -1,5 +1,9 @@
 # Intelli dialer interface
 
+> Superseded for the desktop product by `docs/INTELLI_STANDALONE_SCOPE_20260920.md`.
+> The dialer and its coaching transport are website-owned migration material;
+> this record is retained as historical validation evidence.
+
 Validated source commit: `3a0f9a274a0b436afcf6a1322b6101f81e4ca290`, tree
 `1eee58436d52e9d91b14c18358b191a4c67ed953`. The feature branch and canonical
 remote `master` were pushed and fetched; this source is reachable from both.

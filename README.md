@@ -1,23 +1,30 @@
 # Laserreach Intelli
 
-Laserreach Intelli is the hosted desktop overlay for live call context. It runs as an Electron bar that stays available above the call window and sends audio and transcript context to the Laserreach backend.
+Laserreach Intelli is a hosted standalone desktop assistant. It runs as an Electron bar that stays available above other windows and sends captured audio and transcript context to the Laserreach backend.
 
 The packaged runtime uses hosted services:
 
 - Deepgram handles live speech recognition through the hosted HTTP and WebSocket endpoints.
-- The configured backend model handles call analysis and coaching responses.
+- The configured backend model handles live coaching and analysis responses.
 - Browser sign-in captures the authenticated token inside the Electron login window. The selected organization is stored with the hosted configuration.
 - Session start, transcript events, analysis events, and session end are sent to the hosted session API.
 
 No local model, model download, MCP server, or local ASR process is required by the packaged app. Legacy source files remain in the repository for historical reference and are excluded from Electron packages.
 
-**Call** opens the contact search, caller number and script workspace. Review prepares a frozen contact/script snapshot; **Start call** begins audio and signaling. User and local-agent templates can be selected and edited. The call mixes microphone and received audio for transcription. Number checkout displays server-configured availability and pricing.
+**Start** requests microphone and system audio for live transcription and coaching.
+Settings also offers **Microphone only**. System capture requires OS permission;
+if no system audio track is supplied, Intelli reports the failure. Summary,
+meeting, transcript, and Ask panels expose the hosted analysis and session
+history. Website calling and number management are separate product surfaces.
 
-This is a validated development increment. Live calling requires the matching backend and provider configuration; live number purchases remain disabled pending billing lifecycle and pricing setup. Signing, notarization and production release are not complete. See `docs/DIALER_UI_DESIGN_20260920.md` for validation and remaining work.
+This is a validated development increment. Website calling and number
+management require their matching backend and provider configuration. Signing,
+notarization and production release are not complete. See
+`docs/INTELLI_STANDALONE_SCOPE_20260920.md` for the desktop boundary.
 
 ## Run locally
 
-Requirements: Node.js 18 or newer and npm.
+Requirements: Node.js 22.12 or newer and npm.
 
 ```bash
 npm ci
@@ -31,13 +38,14 @@ The overlay opens with:
 - macOS: `Cmd+Shift+Space`
 - Windows/Linux: `Ctrl+Shift+Space`
 
-Select **Sign in** in the bar. The browser window handles login and organization selection. The bar never asks users to paste a JWT. Sign out clears the stored hosted credentials and the active call state.
+Select **Sign in** in the bar. The browser window handles login and organization selection. The bar never asks users to paste a JWT. Sign out clears the stored hosted credentials and the active assistant session.
 
 ## Validate
 
 ```bash
 npm test
 npm run test:electron
+RUN_INTELLI_STANDALONE_AUDIO_E2E=1 node --test tests/electron-standalone-audio.test.js
 npm run build-check
 ```
 
@@ -51,7 +59,7 @@ npm run build-check-linux
 npm run build-check-win
 ```
 
-The builder includes the hosted runtime, dialer UI, assets, and `src/` modules. Tests, documentation, local model/ASR files, old MCP/local-worker sources, and build helpers are excluded from the application package. `npm run build` and `npm run build-dmg` use this same configuration and never install dependencies during the build.
+The builder includes the hosted runtime, assistant assets, and `src/` modules. Tests, documentation, local model/ASR files, old MCP/local-worker sources, and build helpers are excluded from the application package. `npm run build` and `npm run build-dmg` use this same configuration and never install dependencies during the build.
 
 ## Runtime layout
 
@@ -62,10 +70,12 @@ index.html              Overlay UI and hosted auth/org/session controls
 src/hosted-config.js    Persisted hosted backend/org configuration
 src/hosted-client.js    HTTP/WebSocket client for hosted ASR, analysis and sessions
 src/hosted-audio.js     PCM buffering and hosted transcription adapter
-src/calling-client.js   Named authenticated calling HTTP operations
-src/call-signaling.js   One-call WebSocket lifecycle and bounded signaling
-src/call-media.js       WebRTC microphone/remote audio and transcription mix
-src/dialer-ui.js        Contact, script, review, call and purchase controls
+src/desktop-audio.js    Microphone/system capture ownership and audio mixing
+src/display-capture.js  Trusted-window system capture permission handler
+src/calling-client.js   Website migration module retained outside Intelli runtime
+src/call-signaling.js   Website migration signaling module retained outside Intelli runtime
+src/call-media.js       Website migration media module retained outside Intelli runtime
+src/dialer-ui.js        Website migration UI retained outside Intelli runtime
 tests/                  Node test suite and real Electron startup smoke
 ```
 

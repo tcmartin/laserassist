@@ -18,7 +18,7 @@ Branch: `codex/intelli-calling-20260920`
 
 ## Hosted runtime contract
 
-The packaged app uses `src/hosted-client.js`, `src/hosted-audio.js`, and `src/hosted-config.js`. Browser sign-in, organization selection, content protection, hosted Deepgram transcription, GPT-5-mini analysis, and session event teardown remain in the active runtime. Local model and local ASR paths are excluded from the production package. Dialer behavior remains deferred until its backend contract is published.
+The packaged app uses `src/hosted-client.js`, `src/hosted-audio.js`, and `src/hosted-config.js`. Browser sign-in, organization selection, content protection, hosted Deepgram transcription, GPT-5-mini analysis, and session event teardown remain in the active runtime. Local model and local ASR paths are excluded from the production package. Website dialer behavior is outside this standalone desktop runtime.
 
 Fresh installations default to `https://api.laserreach.com` for the backend and `https://laserreach.com` for browser authentication. Explicit local URLs remain valid configuration overrides. Hosted settings are written with private directory (`0700`) and file (`0600`) permissions because they contain the bearer token.
 

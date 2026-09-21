@@ -47,34 +47,73 @@ test('main IPC analysis defaults to realtime budget and preserves explicit budge
   assert.equal(sent.maxCompletionTokens, 1000);
 });
 
-test('prepared-call analysis ignores a stale default pipeline but preserves explicit scope checks', async () => {
+test('standalone analysis uses configured pipeline and preserves explicit scope', async () => {
   let sent;
   const analyze = loadFunction('main.js', 'async function handleAnalyzeRequest(', 'function registerIpc(', {
     ensureHostedConfigured: () => ({ defaultPipelineId: 'unrelated_pipeline' }),
     hostedClient: { analyze: async (request) => { sent = request; } },
   });
-  await analyze({ transcript: 'Buyer question.', callId: 'prepared_call' });
-  assert.equal(sent.callId, 'prepared_call'); assert.equal(sent.pipelineId, undefined);
   await analyze({ transcript: 'Buyer question.' });
-  assert.equal(sent.pipelineId, 'unrelated_pipeline');
-  await analyze({ transcript: 'Buyer question.', callId: 'prepared_call', pipelineId: 'explicit_pipeline' });
+  assert.equal(sent.callId, undefined); assert.equal(sent.pipelineId, 'unrelated_pipeline');
+  await analyze({ transcript: 'Buyer question.', pipelineId: 'explicit_pipeline' });
   assert.equal(sent.pipelineId, 'explicit_pipeline');
 });
 
-test('workspace reset removes old transcript, call binding and pending coaching', async () => {
+test('workspace reset removes old transcript and pending coaching', async () => {
   let rejected = false, callback;
   const state = { listening: false, transcript: 'Previous workspace transcript', transcriptSegments: ['Previous'],
-    callId: 'old_call', activeReminder: { pipeline_id: 'old_pipeline' }, clarificationPrompts: ['Old question'],
+    activeReminder: { pipeline_id: 'old_pipeline' }, clarificationPrompts: ['Old question'],
     pendingAnalysis: new Map([['old', { reject() { rejected = true; } }]]) };
   const source = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
   const from = source.indexOf('API.onAuthUpdated(async (msg) => {');
   const to = source.indexOf('API.onQuickAsk(', from);
-  vm.runInNewContext(source.slice(from, to), { state, dialer: null,
+  vm.runInNewContext(source.slice(from, to), { state,
     API: { onAuthUpdated(fn) { callback = fn; } }, renderClarifyButtons() {},
     stopListening: async () => {}, refreshConfigAndAuth: async () => {} });
   await callback({ configChanged: true });
   assert.equal(state.transcript, ''); assert.equal(state.transcriptSegments.length, 0);
-  assert.equal(state.callId, null); assert.equal(state.activeReminder, null);
+  assert.equal(state.activeReminder, null);
   assert.equal(state.clarificationPrompts.length, 0);
   assert.equal(state.pendingAnalysis.size, 0); assert.ok(rejected);
+});
+
+for (const nextSession of [null, 'new-session']) {
+  test(`late automatic coaching cannot reopen a stopped or replaced session (${nextSession})`, async () => {
+    let finish;
+    let opened = 0;
+    const state = { autoInsightEnabled: true, listening: true, sessionId: 'old-session',
+      autoInsightInFlight: false, transcript: 'A'.repeat(100), autoInsightMinChars: 80,
+      autoInsightLastAnalyzedLen: 0, autoInsightLastRunAt: 0 };
+    const run = loadFunction('index.html', 'async function runAutoInsightIfReady(', 'function queueAutoInsight(', {
+      state, autoInsightPrompt: () => 'Coach',
+      runAnalysis: () => new Promise((resolve) => { finish = resolve; }),
+      openAnalysisPanels: async () => { opened += 1; },
+    });
+    const pending = run();
+    state.listening = Boolean(nextSession);
+    state.sessionId = nextSession;
+    state.autoInsightInFlight = Boolean(nextSession);
+    finish({ summary: 'Stale answer' });
+    await pending;
+    assert.equal(opened, 0);
+    assert.equal(state.autoInsightLastAnalyzedLen, 0);
+    assert.equal(state.autoInsightInFlight, Boolean(nextSession));
+  });
+}
+
+test('late analysis response never appends results to a different session', () => {
+  let callback; let resolved = false; const appended = [];
+  const state = { listening: true, sessionId: 'new-session', pendingAnalysis: new Map([
+    ['old-request', { sessionId: 'old-session', resolve() { resolved = true; } }],
+  ]) };
+  const source = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+  const from = source.indexOf('API.onAnalysisResponse((event) => {');
+  const to = source.indexOf('API.onResponse(', from);
+  vm.runInNewContext(source.slice(from, to), { state, nowIso: () => 'now', API: {
+    onAnalysisResponse(fn) { callback = fn; },
+    sessionAppendAnalysis(...args) { appended.push(args); },
+  } });
+  callback({ data: { id: 'old-request', results: { summary: 'Old audio' } } });
+  assert.equal(resolved, true);
+  assert.equal(appended.length, 0);
 });
