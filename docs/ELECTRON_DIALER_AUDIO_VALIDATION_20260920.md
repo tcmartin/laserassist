@@ -24,7 +24,7 @@ RUN_INTELLI_DIALER_AUDIO_E2E=1 DDB_LOCAL_ENDPOINT=http://127.0.0.1:8000 \
   node --test tests/electron-dialer-audio.test.js
 ```
 
-The final opt-in run passed in **31.20 seconds** (31.33 seconds including the
+The final opt-in run passed in **30.97 seconds** (31.08 seconds including the
 Node runner). It used local DynamoDB at `http://127.0.0.1:8000`; the harness
 provisioned required tables and deleted its unique tenant's calling records
 and people/user fixtures during teardown. Redis used a disposable local port.
@@ -35,8 +35,10 @@ Observed evidence:
 - One fake-provider start, end and close; durable call state `ended`.
 - A second Chromium peer accepted the browser offer and returned its answer
   through the real backend media WebSocket and unchanged Electron IPC.
+- The peer reached `connected` with actual bidirectional RTP: 964 received
+  audio bytes and 925 sent audio bytes at the assertion checkpoint.
 - Generated speech reached ASR transport in 14 PCM chunks; maximum absolute
-  normalized sample amplitude was 0.35443.
+  normalized sample amplitude was 0.36768.
 - One automatic coaching request completed. The test inspected the overlay
   renderer and asserted the expected summary text, beyond panel creation.
 - ASR start/end each occurred once; generated audio resources were closed.
